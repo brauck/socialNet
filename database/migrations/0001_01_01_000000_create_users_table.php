@@ -11,14 +11,32 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Schema::create('users', function (Blueprint $table) {
+        //     $table->id();
+        //     $table->string('name');
+        //     $table->string('email')->unique();
+        //     $table->timestamp('email_verified_at')->nullable();
+        //     $table->string('password');
+        //     $table->rememberToken();
+        //     $table->timestamps();
+        // });
+
         Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
+            $table->id(); // Автоинкремент BIGINT PRIMARY KEY
+            $table->string('first_name'); // Имя
+            $table->string('last_name');  // Фамилия
+            $table->string('username')->unique(); // ЧПУ ссылка на профиль (id123 или ://vk.com)
             $table->string('email')->unique();
+            $table->string('phone')->unique()->nullable(); // Телефон (сделаем nullable, так как при реге по email его может не быть)
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
-            $table->timestamps();
+            $table->timestamps(); // Автоматически создает поля created_at и updated_at
+
+            // Индексы для быстрого поиска людей в соцсети
+            $table->index('first_name');
+            $table->index('last_name');
+            $table->index('phone');
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
