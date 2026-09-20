@@ -11,4 +11,10 @@ class Friendship extends Model
     // Указываем Laravel, что автоинкрементного ID тут нет
     public $incrementing = false;
     protected $keyType = 'string';
+
+    // КРИТИЧЕСКИ ВАЖНО: Связываем модель дружбы с отправителем заявки (User)
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }

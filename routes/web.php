@@ -1,6 +1,9 @@
 <?php
 
+use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CommunityController;
+use App\Http\Controllers\FriendController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -37,4 +40,7 @@ Route::middleware('auth')->group(function () {
 
     // Роут для кнопки Выход
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/communities', [CommunityController::class, 'index']);
+    Route::get('/friends', [FriendController::class, 'index']);
+
 });
