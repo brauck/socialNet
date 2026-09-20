@@ -27,6 +27,7 @@ CREATE TABLE messages (
     FOREIGN KEY (to_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+-- +++
 DROP TABLE IF EXISTS friend_requests;
 CREATE TABLE friend_requests (
 	-- id SERIAL PRIMARY KEY, -- changed to combined primary key (initiator_user_id, target_user_id)

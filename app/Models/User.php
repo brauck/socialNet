@@ -67,4 +67,12 @@ class User extends Authenticatable
         return array_merge($sent, $received);
     }
 
+    // Получить все сообщества, на которые подписан данный пользователь
+    public function communities()
+    {
+        return $this->belongsToMany(Community::class, 'community_members')
+                    ->withPivot('role', 'joined_at');
+    }
+
+
 }
