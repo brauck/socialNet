@@ -45,4 +45,26 @@ class User extends Authenticatable
     {
         return $this->hasOne(UserProfile::class);
     }
+
+    // 1. Получить тех, кого юзер сам добавил в друзья (или на кого подписан)
+    public function sentFriendships()
+    {
+        return $this->hasMany(Friendship::class, 'user_id');
+    }
+
+    // 2. Получить те заявки, которые прилетели самому юзеру от других
+    public function receivedFriendships()
+    {
+        return $this->hasMany(Friendship::class, 'friend_id');
+    }
+
+    // 3. Продвинутый метод: получить список ID всех подтвержденных друзей
+    public function getFriendIdsAttribute(): array
+    {
+        $sent = $this->sentFriendships()->where('status', 'accepted')->pluck('friend_id')->toArray();
+        $received = $this->receivedFriendships()->where('status', 'accepted')->pluck('user_id')->toArray();
+        
+        return array_merge($sent, $received);
+    }
+
 }
