@@ -24,5 +24,11 @@ class Media extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    // Получить все лайки, поставленные этому медиафайлу
+    public function likes()
+    {
+        return $this->hasMany(Like::class);
+    }
 }
 

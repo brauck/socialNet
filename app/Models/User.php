@@ -84,4 +84,10 @@ class User extends Authenticatable
     {
         return $this->hasMany(Media::class);
     }
+
+    // Получить все лайки, которые этот пользователь поставил в соцсети
+    public function likedMedia()
+    {
+        return $this->hasMany(Like::class);
+    }
 }

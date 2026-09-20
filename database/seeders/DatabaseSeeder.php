@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
             CommunitySeeder::class,
             MediaSeeder::class,
             MessengerSeeder::class,
+            LikeSeeder::class,
         ]);
     }
 }
