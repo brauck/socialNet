@@ -79,4 +79,9 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Chat::class, 'chat_members')->withPivot('joined_at');
     }
+
+    public function media()
+    {
+        return $this->hasMany(Media::class);
+    }
 }

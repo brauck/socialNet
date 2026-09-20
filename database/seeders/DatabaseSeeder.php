@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             UserProfileSeeder::class,
             FriendshipSeeder::class,
             CommunitySeeder::class,
+            MediaSeeder::class,
             MessengerSeeder::class,
         ]);
     }
