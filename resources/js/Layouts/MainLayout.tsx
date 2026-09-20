@@ -51,6 +51,23 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <Link href="/messages" style={menuItemStyle}>💬 Сообщения</Link>
                         <Link href="/friends" style={menuItemStyle}>👥 Друзья</Link>
                         <Link href="/communities" style={menuItemStyle}>👨‍👩‍👧‍👦 Сообщества</Link>
+
+                        {/* Добавляем кнопку выхода. В Inertia для не-GET запросов мы явно указываем метод POST */}
+                        <Link href="/logout" method="post" as="button" style={{ 
+                            ...menuItemStyle, 
+                            border: 'none', 
+                            background: 'none', 
+                            width: '100%', 
+                            textAlign: 'left', 
+                            cursor: 'pointer',
+                            color: '#939393',
+                            marginTop: '15px',
+                            borderTop: '1px solid #dce1e6',
+                            borderRadius: 0,
+                            paddingTop: '10px'
+                        }}>
+                            🚪 Выйти
+                        </Link>
                     </nav>
                 </aside>
 

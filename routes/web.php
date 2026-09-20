@@ -1,35 +1,40 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-// Route::inertia('/', 'welcome')->name('home');
+// 1. Гостевые маршруты (доступны только если пользователь НЕ залогинен)
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::get('/register', [AuthController::class, 'showRegister']);
+    Route::post('/register', [AuthController::class, 'register']);
+});
 
-// Route::get('/', function () {
-//     // Вместо view() мы пишем Inertia::render().
-//     // Первый параметр — это имя файла в папке Pages (без расширения).
-//     // Второй параметр — массив данных (пропсов), которые улетят в React.
-//     return Inertia::render('Welcome', [
-//         'appName' => 'socialNet',
-//         'serverTime' => now()->toTimeString(),
-//     ]);
-// });
+// 2. Защищенные маршруты социальной сети (доступны только авторизованным юзерам)
+Route::middleware('auth')->group(function () {
+    
+    // Главная страница ("Моя страница" в стиле VK)
+    Route::get('/', function () {
+        // Вытаскиваем данные ТЕКУЩЕГО залогиненного пользователя
+        $currentUser = User::with('profile')->find(Auth::id());
 
-Route::get('/', function () {
-    // Вытаскиваем тебя из базы данных вместе с профилем Минска
-    $sergey = User::with('profile')->where('username', 'sergey')->first();
+        return Inertia::render('Welcome', [
+            'appName' => 'socialNet',
+            'user' => [
+                'id' => $currentUser->id,
+                'full_name' => $currentUser->first_name . ' ' . $currentUser->last_name,
+                'email' => $currentUser->email,
+                'hometown' => $currentUser->profile?->hometown ?? 'Не указан',
+                'status' => $currentUser->profile?->status_text ?? '',
+                'birthday' => $currentUser->profile?->birthday ?? 'Не указана',
+            ],
+            'serverTime' => now()->toTimeString(),
+        ]);
+    });
 
-    return Inertia::render('Welcome', [
-        'appName' => 'socialNet',
-        'user' => [
-            'id' => $sergey->id,
-            'full_name' => $sergey->first_name . ' ' . $sergey->last_name,
-            'email' => $sergey->email,
-            'hometown' => $sergey->profile?->hometown ?? 'Не указан',
-            'status' => $sergey->profile?->status_text ?? '',
-            'birthday' => $sergey->profile?->birthday ?? '',
-        ],
-        'serverTime' => now()->toTimeString(),
-    ]);
+    // Роут для кнопки Выход
+    Route::post('/logout', [AuthController::class, 'logout']);
 });
