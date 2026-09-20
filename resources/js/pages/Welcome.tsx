@@ -1,6 +1,6 @@
 import React from 'react';
+import MainLayout from '../Layouts/MainLayout'; // Импортируем макет
 
-// Описываем строгий тип для пользователя из Laravel
 interface UserProps {
     id: number;
     full_name: string;
@@ -18,57 +18,51 @@ interface WelcomeProps {
 
 const Welcome: React.FC<WelcomeProps> = ({ appName, user, serverTime }) => {
     return (
-        <div style={{ 
-            fontFamily: 'sans-serif', 
-            padding: '40px', 
-            backgroundColor: '#f0f2f5', 
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center'
-        }}>
+        <MainLayout>
             <div style={{
                 backgroundColor: '#ffffff',
-                padding: '30px',
-                borderRadius: '12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                width: '100%',
-                maxWidth: '450px'
+                padding: '25px',
+                borderRadius: '8px',
+                border: '1px solid #dce1e6',
+                boxShadow: '0 1px 2px 0 rgba(0,0,0,0.1)'
             }}>
-                <h1 style={{ color: '#4c75a3', fontSize: '24px', margin: '0 0 5px 0' }}>
+                <h1 style={{ color: '#000000', fontSize: '20px', margin: '0 0 5px 0', fontWeight: 500 }}>
                     {user.full_name}
                 </h1>
+                
                 <p style={{ 
-                    fontStyle: 'italic', 
-                    color: '#555', 
+                    color: '#65676b', 
                     margin: '0 0 20px 0',
-                    fontSize: '14px',
-                    borderLeft: '3px solid #4c75a3',
-                    paddingLeft: '10px'
+                    fontSize: '13px',
+                    borderLeft: '2px solid #4c75a3',
+                    paddingLeft: '8px'
                 }}>
-                    «{user.status}»
+                    {user.status || 'Изменить статус'}
                 </p>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '15px' }}>
-                    <div>📍 <strong>Родной город:</strong> {user.hometown}</div>
-                    <div>📅 <strong>День рождения:</strong> {user.birthday}</div>
-                    <div>✉️ <strong>Email:</strong> {user.email}</div>
+                <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '12px', 
+                    fontSize: '13px',
+                    borderTop: '1px solid #f0f2f5',
+                    paddingTop: '15px'
+                }}>
+                    <div><span style={{ color: '#828282', width: '120px', display: 'inline-block' }}>Родной город:</span> <span style={{ color: '#2a5885' }}>{user.hometown}</span></div>
+                    <div><span style={{ color: '#828282', width: '120px', display: 'inline-block' }}>День рождения:</span> <span style={{ color: '#2a5885' }}>{user.birthday}</span></div>
+                    <div><span style={{ color: '#828282', width: '120px', display: 'inline-block' }}>Email:</span> {user.email}</div>
                 </div>
 
                 <div style={{ 
-                    marginTop: '25px', 
-                    fontSize: '12px', 
-                    color: '#888',
-                    borderTop: '1px solid #eee',
-                    paddingTop: '15px',
-                    textAlign: 'center'
+                    marginTop: '30px', 
+                    fontSize: '11px', 
+                    color: '#939393',
+                    textAlign: 'right'
                 }}>
-                    Подключено к СУБД PostgreSQL (Порт 5434)<br />
-                    Vite HMR работает | {serverTime}
+                    socialNet Engine v1.0 | {serverTime}
                 </div>
             </div>
-        </div>
+        </MainLayout>
     );
 };
 
