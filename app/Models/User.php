@@ -74,5 +74,9 @@ class User extends Authenticatable
                     ->withPivot('role', 'joined_at');
     }
 
-
+    // Получить все чаты, в которых состоит пользователь
+    public function chats()
+    {
+        return $this->belongsToMany(Chat::class, 'chat_members')->withPivot('joined_at');
+    }
 }

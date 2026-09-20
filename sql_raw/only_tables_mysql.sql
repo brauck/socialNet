@@ -14,6 +14,7 @@ CREATE TABLE users (
     INDEX users_firstname_lastname_idx(firstname, lastname)
 );
 
+-- +++
 DROP TABLE IF EXISTS messages;
 CREATE TABLE messages (
 	id SERIAL PRIMARY KEY,
@@ -45,6 +46,7 @@ CREATE TABLE friend_requests (
     -- , CHECK (initiator_user_id <> target_user_id)
 );
 
+-- +++
 DROP TABLE IF EXISTS communities;
 CREATE TABLE communities(
 	id SERIAL PRIMARY KEY,
@@ -52,6 +54,7 @@ CREATE TABLE communities(
     INDEX communities_name_idx(name)
 );
 
+-- +++
 DROP TABLE IF EXISTS users_communities;
 CREATE TABLE users_communities(
 	user_id BIGINT UNSIGNED NOT NULL,
