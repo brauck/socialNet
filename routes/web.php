@@ -6,6 +6,7 @@ use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\FriendController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NewsController;
+use App\Http\Controllers\ProfileController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -35,6 +36,7 @@ Route::middleware('auth')->group(function () {
                 'hometown' => $currentUser->profile?->hometown ?? 'Не указан',
                 'status' => $currentUser->profile?->status_text ?? '',
                 'birthday' => $currentUser->profile?->birthday ?? 'Не указана',
+                'avatar_url' => $currentUser->profile?->avatar_url ? asset('storage/' . $currentUser->profile->avatar_url) : null,
             ],
             'serverTime' => now()->toTimeString(),
         ]);
@@ -49,4 +51,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/news', [NewsController::class, 'index']);
     Route::post('/news/{media}/like', [NewsController::class, 'toggleLike']);
     Route::post('/news', [NewsController::class, 'store']);
+    Route::get('/profile/edit', [ProfileController::class, 'edit']);
+    Route::post('/profile/edit', [ProfileController::class, 'update']);
 });
