@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CommunityController;
 use App\Http\Controllers\FriendController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\NewsController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -45,4 +46,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/messages', [MessageController::class, 'index']);
     Route::get('/messages/{chat}', [MessageController::class, 'show'])->name('messages.show');
     Route::post('/messages/{chat}', [MessageController::class, 'store']);
+    Route::get('/news', [NewsController::class, 'index']);
+    Route::post('/news/{media}/like', [NewsController::class, 'toggleLike']);
+    Route::post('/news', [NewsController::class, 'store']);
 });
