@@ -36,6 +36,7 @@ Route::middleware('auth')->group(function () {
                 'hometown' => $currentUser->profile?->hometown ?? 'Не указан',
                 'status' => $currentUser->profile?->status_text ?? '',
                 'birthday' => $currentUser->profile?->birthday ?? 'Не указана',
+                'avatar_url' => $currentUser->profile?->avatar_url ? asset('storage/' . $currentUser->profile->avatar_url) : null,
             ],
             'serverTime' => now()->toTimeString(),
         ]);
