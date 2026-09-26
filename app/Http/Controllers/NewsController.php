@@ -39,6 +39,7 @@ class NewsController extends Controller
                     'author' => [
                         'id' => $media->user->id,
                         'full_name' => $media->user->first_name . ' ' . $media->user->last_name,
+                        'avatar_url' => $media->user->profile?->avatar_url ? asset('storage/' . $media->user->profile->avatar_url) : null,
                     ],
                     'date' => $media->created_at->diffForHumans(),
                 ];

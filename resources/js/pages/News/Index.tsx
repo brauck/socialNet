@@ -11,7 +11,11 @@ interface PostProps {
     metadata: any;
     likes_count: number;
     liked_by_me: boolean;
-    author: { id: number; full_name: string; };
+    author: {
+        id: number;
+        full_name: string;
+        avatar_url: string | null;
+    };
     date: string;
 }
 
@@ -146,7 +150,15 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
                     <div key={post.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
                         {/* Шапка поста */}
                         <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-lg">🧑‍💻</div>
+                            {/* ОБНОВЛЕННЫЙ БЛОК: Вывод круглой аватарки автора поста */}
+                            <div className="w-10 h-10 bg-blue-50 border border-gray-100 rounded-full overflow-hidden flex items-center justify-center text-lg shrink-0 shadow-inner">
+                                {post.author.avatar_url ? (
+                                    <img src={post.author.avatar_url} alt="Аватар автора" className="w-full h-full object-cover" />
+                                ) : (
+                                    '💁‍♂️'
+                                )}
+                            </div>
+                            
                             <div>
                                 <div className="text-sm font-semibold text-blue-800 hover:underline cursor-pointer">
                                     {post.author.full_name}
