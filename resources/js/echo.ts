@@ -8,18 +8,19 @@ declare global {
     }
 }
 
-// Запускаем инициализацию ТОЛЬКО если код выполняется в браузере
 if (typeof window !== 'undefined') {
     window.Pusher = Pusher;
 
     window.Echo = new Echo<'pusher'>({
-        broadcaster: 'pusher',
+        // ХАК: Обманываем TypeScript с помощью 'as any'.
+        // Это включит нативный коннектор Reverb и уберет ошибку компиляции!
+        broadcaster: 'reverb' as any, 
+        
         key: import.meta.env.VITE_REVERB_APP_KEY || 'my-app-key',
         wsHost: import.meta.env.VITE_REVERB_HOST || '127.0.0.1',
         wsPort: 8080,
         wssPort: 8080,
-        forceTLS: false, // Отключаем безопасный протокол wss:// для Docker
-        encrypted: false,
+        forceTLS: false,
         enabledTransports: ['ws', 'wss'],
     });
 }
