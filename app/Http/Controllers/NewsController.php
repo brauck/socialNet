@@ -8,6 +8,7 @@ use App\Models\Like;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use App\Events\MediaLiked;
 
 class NewsController extends Controller
 {
@@ -53,18 +54,27 @@ class NewsController extends Controller
     {
         $userId = Auth::id();
         
+        // Наша рабочая логика переключения лайка в базе данных
         $like = Like::where('user_id', $userId)->where('media_id', $media->id)->first();
 
         if ($like) {
-            $like->delete(); // Если лайк был — удаляем
+            $like->delete();
         } else {
             Like::create([
                 'user_id' => $userId,
                 'media_id' => $media->id,
-            ]); // Если не было — создаем
+            ]);
         }
 
-        return redirect()->back(); // Возвращаем Inertia-ответ для обновления счетчиков
+        // 1. Считаем свежее количество лайков под постом из PostgreSQL
+        $likesCount = $media->likes()->count();
+
+        // 2. Отправляем событие в WebSocket-сервер Reverb
+        // Метод ->toOthers() заставит Reverb отправить сигнал ВСЕМ, кроме нас самих,
+        // так как у нас на вкладке уже мгновенно отработал Оптимистичный UI!
+        broadcast(new MediaLiked($media->id, $likesCount))->toOthers();
+
+        return redirect()->back();
     }
 
     public function store(Request $request)
