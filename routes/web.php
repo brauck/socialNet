@@ -53,4 +53,5 @@ Route::middleware('auth')->group(function () {
     Route::post('/news', [NewsController::class, 'store']);
     Route::get('/profile/edit', [ProfileController::class, 'edit']);
     Route::post('/profile/edit', [ProfileController::class, 'update']);
+    Route::delete('/news/{media}', [NewsController::class, 'destroy'])->name('news.destroy');
 });

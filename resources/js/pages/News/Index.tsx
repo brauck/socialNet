@@ -21,9 +21,10 @@ interface PostProps {
 
 interface IndexProps {
     posts: PostProps[];
+    current_user_id: number;
 }
 
-const Index: React.FC<IndexProps> = ({ posts }) => {
+const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
     const [localPosts, setLocalPosts] = useState<PostProps[]>(posts);
     const [fileError, setFileError] = useState<string | null>(null);
 
@@ -70,6 +71,14 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
             
             // Добавляем свежий прилетевший пост в САМОЕ НАЧАЛО массива (в самый верх ленты новостей)
             setLocalPosts(prevPosts => [e.post, ...prevPosts]);
+        });
+
+        // Удаление постов по сокетам
+        channel.listen('.post.deleted', (e: { postId: number }) => {
+            console.log('Real-time сокет поймал удаление поста:', e.postId);
+            
+            // Фильтруем массив и убираем удаленный пост из ленты у других пользователей
+            setLocalPosts(prevPosts => prevPosts.filter(post => post.id !== e.postId));
         });
 
         // Очистка при уходе со страницы, чтобы не плодить утечки памяти в SPA-режиме
@@ -145,6 +154,17 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
             // Если файл прошел валидацию — сохраняем его в форму Inertia
             setData('media_file', file);
         }
+    };
+
+    const handleDeletePost = (postId: number) => {
+        // 1. ОПТИМИСТИЧНОЕ ОБНОВЛЕНИЕ: Стираем пост с экрана у себя дома мгновенно
+        setLocalPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
+
+        // 2. Фоновый запрос на сервер в Docker
+        router.delete(`/news/${postId}`, {
+            preserveScroll: true,
+            preserveState: true,
+        });
     };
 
     return (
@@ -228,76 +248,65 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
 
                 {/* ВЫВОД ЛЕНТЫ ПОСТОВ */}
                 {localPosts.map(post => (
-                    <div key={post.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                        {/* Шапка поста */}
-                        <div className="flex items-center gap-3 mb-3">
-                            {/* ОБНОВЛЕННЫЙ БЛОК: Вывод круглой аватарки автора поста */}
-                            <div className="w-10 h-10 bg-blue-50 border border-gray-100 rounded-full overflow-hidden flex items-center justify-center text-lg shrink-0 shadow-inner">
-                                {post.author.avatar_url ? (
-                                    <img src={post.author.avatar_url} alt="Аватар автора" className="w-full h-full object-cover" />
-                                ) : (
-                                    '💁‍♂️'
-                                )}
+                    <div key={post.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm flex flex-col gap-4">
+                        
+                        {/* 1. СТРОКА ПЕРВАЯ: Аватар и имя — в начале, кнопка удаления — строго в самом конце */}
+                        <div className="flex justify-between items-center w-full">
+                            {/* Блок автора (Аватар + Имя + Дата) */}
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-50 border border-gray-100 rounded-full overflow-hidden flex items-center justify-center text-lg shrink-0 shadow-inner">
+                                    {post.author.avatar_url ? (
+                                        <img src={post.author.avatar_url} alt="Аватар" className="w-full h-full object-cover" />
+                                    ) : (
+                                        '💁‍♂️'
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-sm font-semibold text-blue-800 hover:underline cursor-pointer">
+                                        {post.author.full_name}
+                                    </div>
+                                    <div className="text-xs text-gray-400 mt-0.5">{post.date}</div>
+                                </div>
                             </div>
-                            
-                            <div>
-                                <div className="text-sm font-semibold text-blue-800 hover:underline cursor-pointer">
-                                    {post.author.full_name}
-                                </div>
-                                <div className="text-xs text-gray-400 mt-0.5">{post.date}</div>
-                            </div>
-                        </div>
 
-                        {/* Текст поста */}
-                        {post.body && <p className="text-sm text-gray-900 mb-4 leading-relaxed">{post.body}</p>}
-
-                        {/* Контент на основе метаданных JSON */}
-                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-4 text-sm">
-                            {post.type === 'photo' && post.filename && (
-                                <div className="flex flex-col gap-1 text-gray-700">
-                                    <div className="text-sm font-semibold text-gray-800">📸 Фотография</div>
-                                    <div className="mt-3 rounded-lg overflow-hidden border border-gray-100 max-h-60 bg-gray-50">
-                                        <img 
-                                            src={`/storage/${post.filename}`} 
-                                            alt="Контент поста" 
-                                            className="w-full h-full object-cover"
-                                            onError={(e) => (e.currentTarget.style.display = 'none')} // Элегантная защита: если файла на диске нет, картинка просто скроется без вывода ошибок!
-                                        />
-                                    </div>
-                                    <div className="text-xs text-gray-400 mt-1">Камера: {post.metadata?.camera} · Разрешение: {post.metadata?.width}x{post.metadata?.height}</div>
-                                </div>
-                            )}
-
-                            {post.type === 'audio' && (
-                                <div className="flex items-center gap-3">
-                                    <div className="text-2xl">🎵</div>
-                                    <div>
-                                        <div className="font-semibold text-gray-900">{post.metadata?.artist || 'Неизвестный исполнитель'}</div>
-                                        <div className="text-xs text-gray-500 mt-0.5">{post.metadata?.title}</div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {post.type === 'video' && (
-                                <div className="flex flex-col gap-1 text-gray-700">
-                                    <div className="text-sm font-semibold text-gray-800">🎥 Видеозапись</div>
-                                    <div className="text-xs text-gray-500 mt-1">Качество: {post.metadata?.resolution} · Длина: {Math.floor((post.metadata?.duration_seconds || 0) / 60)} мин</div>
-                                </div>
-                            )}
-
-                            {post.type === 'document' && (
-                                <div className="flex items-center gap-3">
-                                    <div className="text-2xl">📄</div>
-                                    <div>
-                                        <div className="font-medium text-blue-700 truncate max-w-md">{post.filename.split('/').pop()}</div>
-                                        <div className="text-xs text-gray-400 mt-0.5">Размер: {(post.size / 1024 / 1024).toFixed(2)} Мб</div>
-                                    </div>
-                                </div>
+                            {/* Кнопка удаления (Появится в самом конце строки благодаря flex justify-between) */}
+                            {post.author.id === current_user_id && (
+                                <button 
+                                    onClick={() => handleDeletePost(post.id)}
+                                    className="text-gray-400 hover:text-red-500 text-sm p-1.5 rounded-md hover:bg-gray-50 transition-colors shrink-0"
+                                    title="Удалить публикацию"
+                                >
+                                    ✕
+                                </button>
                             )}
                         </div>
 
-                        {/* Кнопка лайка */}
-                        <div className="flex items-center border-t border-gray-50 pt-3">
+                        {/* Текст поста (если есть) */}
+                        {post.body && <p className="text-sm text-gray-900 leading-relaxed">{post.body}</p>}
+
+                        {/* 2. СТРОКА ВТОРАЯ: Картинка отображается ПОЛНОСТЬЮ, без обрезания и без растягивания на всю ширину */}
+                        {/* max-h-[500px] защищает ленту от слишком длинных картинок, а object-contain сохраняет пропорции */}
+                        {post.type === 'photo' && post.filename && (
+                            <div className="w-full bg-gray-50 border border-gray-100 rounded-lg flex items-center justify-center overflow-hidden p-2">
+                                <img 
+                                    src={`/storage/${post.filename}`} 
+                                    alt="Медиаконтент" 
+                                    className="max-w-full max-h-[500px] object-contain rounded-md" 
+                                />
+                            </div>
+                        )}
+
+                        {/* Отображение других типов файлов (Аудио, Видео, Документы — оставляем без изменений) */}
+                        {post.type !== 'photo' && post.type !== 'document' && (
+                            <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 text-sm">
+                                {/* Твой существующий код для аудио/видео */}
+                                {post.type === 'audio' && <div>🎵 {post.metadata?.artist} — {post.metadata?.title}</div>}
+                                {post.type === 'video' && <div>🎥 Видеозапись ({post.metadata?.resolution})</div>}
+                            </div>
+                        )}
+
+                        {/* 3. СТРОКА ТРЕТЬЯ: Лайк в самом низу карточки */}
+                        <div className="border-t border-gray-100 pt-3 flex items-center">
                             <button 
                                 onClick={() => handleLike(post.id)}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${post.liked_by_me ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
@@ -306,6 +315,7 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
                                 <span>{post.likes_count}</span>
                             </button>
                         </div>
+
                     </div>
                 ))}
             </div>

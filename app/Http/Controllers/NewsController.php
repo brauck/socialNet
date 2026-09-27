@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Events\MediaLiked;
 use App\Events\PostPublished;
+use App\Events\PostDeleted;
 use Illuminate\Support\Str;
 
 class NewsController extends Controller
@@ -48,7 +49,8 @@ class NewsController extends Controller
             });
 
         return Inertia::render('News/Index', [
-            'posts' => $posts
+            'posts' => $posts,
+            'current_user_id' => $currentUserId
         ]);
     }
 
@@ -184,6 +186,24 @@ class NewsController extends Controller
 
         // 4. Стреляем событием в WebSocket-сервер Reverb для ВСЕХ ОСТАЛЬНЫХ пользователей на сайте
         broadcast(new PostPublished($formattedPost))->toOthers();
+
+        return redirect()->back();
+    }
+
+    public function destroy(Media $media)
+    {
+        // Безопасность: проверяем, является ли текущий пользователь автором поста
+        if ($media->user_id !== Auth::id()) {
+            abort(403, 'У вас нет прав на удаление этого поста.');
+        }
+
+        $postId = $media->id;
+
+        // Удаляем запись из PostgreSQL
+        $media->delete();
+
+        // Транслируем событие удаления всем ОСТАЛЬНЫМ пользователям в реальном времени
+        broadcast(new PostDeleted($postId))->toOthers();
 
         return redirect()->back();
     }
