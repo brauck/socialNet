@@ -1,3 +1,4 @@
+import { Head } from '@inertiajs/react';
 import { router } from '@inertiajs/react';
 import React from 'react';
 import MainLayout from '../../Layouts/MainLayout';
@@ -25,6 +26,7 @@ interface IndexProps {
 const Index: React.FC<IndexProps> = ({ chats }) => {
     return (
         <MainLayout>
+            <Head title="Сообщения" />
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                 {/* Шапка мессенджера */}
                 <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">

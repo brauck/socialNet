@@ -1,3 +1,4 @@
+import { Head } from '@inertiajs/react';
 import React, { useState, useEffect } from 'react';
 import MainLayout from '../../Layouts/MainLayout';
 import { router, useForm } from '@inertiajs/react'; // Добавляем импорт useForm
@@ -169,8 +170,8 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
 
     return (
         <MainLayout>
-            <div className="flex flex-col gap-4">
-                
+            <Head title="Новости" /> 
+            <div className="flex flex-col gap-4">                
                 {/* БЛОК ФОРМЫ: «Что у вас нового?» в стиле VK */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
                     <form onSubmit={handleCreatePost} className="flex flex-col gap-3">

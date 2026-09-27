@@ -1,3 +1,4 @@
+import { Head } from '@inertiajs/react';
 import React from 'react';
 import MainLayout from '../Layouts/MainLayout'; // Импортируем макет
 import { Link } from '@inertiajs/react'; // КРИТИЧЕСКИ ВАЖНО: Добавляем импорт Link для кнопки
@@ -21,6 +22,7 @@ interface WelcomeProps {
 const Welcome: React.FC<WelcomeProps> = ({ appName, user, serverTime }) => {
     return (
         <MainLayout>
+            <Head title="Моя страница" /> 
             <div style={{
                 backgroundColor: '#ffffff',
                 padding: '25px',
