@@ -25,6 +25,7 @@ interface IndexProps {
 
 const Index: React.FC<IndexProps> = ({ posts }) => {
     const [localPosts, setLocalPosts] = useState<PostProps[]>(posts);
+    const [fileError, setFileError] = useState<string | null>(null);
 
     // Инициализируем форму создания поста через хук Inertia
     // const { data, setData, post, processing, reset, errors } = useForm({
@@ -42,24 +43,34 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
 
     useEffect(() => {
         // Подключаемся к публичному каналу 'news'
-        window.Echo.channel('news')
-            // Слушаем событие 'media.liked' (обязательно с ведущей точкой!)
-            .listen('.media.liked', (e: { mediaId: number; likesCount: number }) => {
-                console.log('Real-time сокет поймал лайк:', e);
-                
-                // Находим нужный пост в локальном состоянии React и обновляем ему счетчик
-                setLocalPosts(prevPosts => 
-                    prevPosts.map(post => {
-                        if (post.id === e.mediaId) {
-                            return {
-                                ...post,
-                                likes_count: e.likesCount
-                            };
-                        }
-                        return post;
-                    })
-                );
-            });
+        const channel = window.Echo.channel('news');
+        
+        //window.Echo.channel('news')
+        // Слушаем событие 'media.liked' (обязательно с ведущей точкой!)
+        channel.listen('.media.liked', (e: { mediaId: number; likesCount: number }) => {
+            console.log('Real-time сокет поймал лайк:', e);
+            
+            // Находим нужный пост в локальном состоянии React и обновляем ему счетчик
+            setLocalPosts(prevPosts => 
+                prevPosts.map(post => {
+                    if (post.id === e.mediaId) {
+                        return {
+                            ...post,
+                            likes_count: e.likesCount
+                        };
+                    }
+                    return post;
+                })
+            );
+        });
+
+        // Ловим новые посты по воздуху
+        channel.listen('.post.published', (e: { post: PostProps }) => {
+            console.log('Real-time сокет поймал новую публикацию постов:', e.post);
+            
+            // Добавляем свежий прилетевший пост в САМОЕ НАЧАЛО массива (в самый верх ленты новостей)
+            setLocalPosts(prevPosts => [e.post, ...prevPosts]);
+        });
 
         // Очистка при уходе со страницы, чтобы не плодить утечки памяти в SPA-режиме
         return () => {
@@ -108,6 +119,7 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
             onSuccess: () => {
                 reset('body');
                 setData('media_file', null); // Чистим файл в стейте вручную
+                setFileError(null); // Очищаем ошибку
                 // Сбрасываем значение самого инпута в DOM, если нужно
                 const fileInput = document.getElementById('news-file-input') as HTMLInputElement;
                 if (fileInput) fileInput.value = '';
@@ -116,6 +128,24 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
         });
     };
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files ? e.target.files[0] : null;
+        setFileError(null); // Сбрасываем старую ошибку
+
+        if (file) {
+            const maxSize = 20 * 1024 * 1024; // 20 МБ в байтах
+            
+            if (file.size > maxSize) {
+                setFileError(`Файл слишком большой (${(file.size / 1024 / 1024).toFixed(1)} МБ). Максимальный размер — 20 МБ.`);
+                setData('media_file', null); // Не записываем битый файл в форму
+                e.target.value = ''; // Сбрасываем значение самого инпута в DOM
+                return;
+            }
+
+            // Если файл прошел валидацию — сохраняем его в форму Inertia
+            setData('media_file', file);
+        }
+    };
 
     return (
         <MainLayout>
@@ -127,7 +157,7 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
                         <textarea
                             placeholder="Что у вас нового?"
                             value={data.body}
-                            onChange={e => setData('body', e.target.value)}
+                            onChange={e => setData('body', e.target.value)}                         
                             rows={data.body ? 3 : 1}
                             className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all resize-none text-gray-900 placeholder-gray-400"
                             disabled={processing}
@@ -170,7 +200,8 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
                                         id="news-file-input"
                                         type="file"
                                         accept="image/*,audio/*,video/*,.pdf,.zip,.docx"
-                                        onChange={e => setData('media_file', e.target.files ? e.target.files[0] : null)}
+                                        // onChange={e => setData('media_file', e.target.files ? e.target.files[0] : null)}
+                                        onChange={handleFileChange}
                                         className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
                                         disabled={processing}
                                     />
@@ -178,11 +209,18 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
 
                                 <button
                                     type="submit"
-                                    disabled={processing || !data.body.trim()}
+                                    disabled={processing || !data.body.trim() || !!fileError}
                                     className="bg-blue-600 text-white px-5 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
                                 >
                                     {processing ? 'Публикация...' : 'Опубликовать'}
                                 </button>
+                            </div>                            
+                        )}
+                        {/* НОВЫЙ БЛОК: Мгновенный вывод ошибки размера файла */}
+
+                        {fileError && (
+                            <div className="text-xs text-red-600 font-medium bg-red-50 border border-red-100 rounded-md px-3 py-1.5 animated fadeIn">
+                                ⚠️ {fileError}
                             </div>
                         )}
                     </form>

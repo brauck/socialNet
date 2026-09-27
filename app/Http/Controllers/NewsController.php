@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Events\MediaLiked;
+use App\Events\PostPublished;
 use Illuminate\Support\Str;
 
 class NewsController extends Controller
@@ -150,8 +151,8 @@ class NewsController extends Controller
             $mediaTypeId = MediaType::where('name', 'document')->first()->id;
         }
 
-        // 3. Сохраняем и делаем бродкаст real-time события (если Reverb запущен)
-        Media::create([
+        // 1. Создаем запись в базе данных PostgreSQL и сохраняем объект в переменную $media
+        $media = Media::create([
             'media_type_id' => $mediaTypeId,
             'user_id' => $userId,
             'body' => $request->body,
@@ -159,6 +160,30 @@ class NewsController extends Controller
             'size' => $size,
             'metadata' => $metadata,
         ]);
+
+        // 2. Жадная загрузка связей для только что созданного поста (нужно для аватара и автора)
+        $media->load(['user.profile', 'type']);
+
+        // 3. Формируем чистую структуру данных для фронтенда
+        $formattedPost = [
+            'id' => $media->id,
+            'body' => $media->body,
+            'filename' => $media->filename,
+            'size' => $media->size,
+            'type' => $media->type->name,
+            'metadata' => $media->metadata,
+            'likes_count' => 0, // У нового поста всегда 0 лайков
+            'liked_by_me' => false,
+            'author' => [
+                'id' => $media->user->id,
+                'full_name' => $media->user->first_name . ' ' . $media->user->last_name,
+                'avatar_url' => $media->user->profile?->avatar_url ? asset('storage/' . $media->user->profile->avatar_url) : null,
+            ],
+            'date' => $media->created_at->diffForHumans(),
+        ];
+
+        // 4. Стреляем событием в WebSocket-сервер Reverb для ВСЕХ ОСТАЛЬНЫХ пользователей на сайте
+        broadcast(new PostPublished($formattedPost))->toOthers();
 
         return redirect()->back();
     }
