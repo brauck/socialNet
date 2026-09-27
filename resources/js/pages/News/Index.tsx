@@ -27,9 +27,13 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
     const [localPosts, setLocalPosts] = useState<PostProps[]>(posts);
 
     // Инициализируем форму создания поста через хук Inertia
+    // const { data, setData, post, processing, reset, errors } = useForm({
+    //     body: '',
+    //     media_type: 'none', // По умолчанию без вложений
+    // });
     const { data, setData, post, processing, reset, errors } = useForm({
         body: '',
-        media_type: 'none', // По умолчанию без вложений
+        media_file: null as File | null, // Сюда будет падать реальный файл
     });
 
     useEffect(() => {
@@ -85,17 +89,33 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
     };
 
     // Функция отправки нового поста
-    const handleCreatePost = (e: React.FormEvent) => {
+    // const handleCreatePost = (e: React.FormEvent) => {
+    //     e.preventDefault();
+    //     if (!data.body.trim()) return;
+
+    //     post('/news', {
+    //         onSuccess: () => {
+    //             reset('body', 'media_type'); // Очищаем форму при успешном создании
+    //         },
+    //         preserveScroll: true,
+    //     });
+    // };
+    const handleCreatePost = (e: React.SubmitEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!data.body.trim()) return;
 
         post('/news', {
             onSuccess: () => {
-                reset('body', 'media_type'); // Очищаем форму при успешном создании
+                reset('body');
+                setData('media_file', null); // Чистим файл в стейте вручную
+                // Сбрасываем значение самого инпута в DOM, если нужно
+                const fileInput = document.getElementById('news-file-input') as HTMLInputElement;
+                if (fileInput) fileInput.value = '';
             },
             preserveScroll: true,
         });
     };
+
 
     return (
         <MainLayout>
@@ -116,7 +136,7 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
                         {errors.body && <div className="text-xs text-red-600 px-1">{errors.body}</div>}
 
                         {/* Панель инструментов: показывается, когда пользователь начал писать текст */}
-                        {data.body && (
+                        {/* {data.body && (
                             <div className="flex justify-between items-center pt-2 border-t border-gray-50 animated fadeIn">
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
                                     <span>📎 Прикрепить:</span>
@@ -131,6 +151,29 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
                                         <option value="video">🎥 Видеозапись</option>
                                         <option value="document">📄 Документ</option>
                                     </select>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={processing || !data.body.trim()}
+                                    className="bg-blue-600 text-white px-5 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                >
+                                    {processing ? 'Публикация...' : 'Опубликовать'}
+                                </button>
+                            </div>
+                        )} */}
+                        {data.body && (
+                            <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>📎 Прикрепить файл:</span>
+                                    <input
+                                        id="news-file-input"
+                                        type="file"
+                                        accept="image/*,audio/*,video/*,.pdf,.zip,.docx"
+                                        onChange={e => setData('media_file', e.target.files ? e.target.files[0] : null)}
+                                        className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                                        disabled={processing}
+                                    />
                                 </div>
 
                                 <button
@@ -172,9 +215,17 @@ const Index: React.FC<IndexProps> = ({ posts }) => {
 
                         {/* Контент на основе метаданных JSON */}
                         <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-4 text-sm">
-                            {post.type === 'photo' && (
+                            {post.type === 'photo' && post.filename && (
                                 <div className="flex flex-col gap-1 text-gray-700">
                                     <div className="text-sm font-semibold text-gray-800">📸 Фотография</div>
+                                    <div className="mt-3 rounded-lg overflow-hidden border border-gray-100 max-h-60 bg-gray-50">
+                                        <img 
+                                            src={`/storage/${post.filename}`} 
+                                            alt="Контент поста" 
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => (e.currentTarget.style.display = 'none')} // Элегантная защита: если файла на диске нет, картинка просто скроется без вывода ошибок!
+                                        />
+                                    </div>
                                     <div className="text-xs text-gray-400 mt-1">Камера: {post.metadata?.camera} · Разрешение: {post.metadata?.width}x{post.metadata?.height}</div>
                                 </div>
                             )}

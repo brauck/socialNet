@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Events\MediaLiked;
+use Illuminate\Support\Str;
 
 class NewsController extends Controller
 {
@@ -80,57 +81,76 @@ class NewsController extends Controller
 
     public function store(Request $request)
     {
-        // 1. Валидация входящих данных
+        // 1. Валидация: текст обязателен, файл — опционален, до 20 МБ
         $request->validate([
             'body' => ['required', 'string', 'max:5000'],
-            'media_type' => ['required', 'string', 'in:none,photo,audio,video,document'],
+            'media_file' => ['nullable', 'file', 'max:20480'], 
         ]);
 
         $userId = Auth::id();
-        $mediaTypeInput = $request->input('media_type');
-        
         $mediaTypeId = null;
         $metadata = null;
         $filename = 'posts/text_only.dat';
         $size = 0;
 
-        // 2. Если пользователь прикрепляет медиаконтент — формируем для него VK-метаданные
-        if ($mediaTypeInput !== 'none') {
-            $typeRecord = MediaType::where('name', $mediaTypeInput)->first();
-            $mediaTypeId = $typeRecord->id;
-            $size = rand(100000, 15000000); // Симулируем размер файла
-            $filename = 'uploads/' . $mediaTypeInput . 's/' . fake()->uuid() . '.dat';
+        // 2. Если файл реально прикреплен пользователем
+        if ($request->hasFile('media_file')) {
+            $file = $request->file('media_file');
+            $size = $file->getSize();
+            $extension = strtolower($file->getClientOriginalExtension());
+            $mime = $file->getMimeType();
 
-            // Генерируем тестовую JSON-структуру под тип медиафайла
-            $metadata = match ($mediaTypeInput) {
-                'photo' => [
-                    'width' => 1920,
-                    'height' => 1080,
-                    'camera' => fake()->randomElement(['iPhone 15', 'Sony Alpha 7', 'Samsung S24']),
-                ],
-                'audio' => [
-                    'artist' => fake()->name(),
-                    'title' => 'Загруженный трек #' . rand(1, 100),
-                    'duration_seconds' => rand(120, 300),
+            // Автоматически определяем категорию контента по MIME-типу в стиле VK
+            if (str_contains($mime, 'image')) {
+                $typeName = 'photo';
+                $folder = 'photos';
+                
+                // Магия PHP: получаем реальное разрешение картинки из временной папки Docker
+                $imageSize = @getimagesize($file->getRealPath());
+                $metadata = [
+                    'width' => $imageSize ? $imageSize[0] : 1280,
+                    'height' => $imageSize ? $imageSize[1] : 720,
+                    'camera' => fake()->randomElement(['iPhone 15', 'Sony Alpha 7', 'Samsung S24']), // симулируем EXIF для красоты
+                ];
+            } elseif (str_contains($mime, 'audio')) {
+                $typeName = 'audio';
+                $folder = 'audios';
+                $metadata = [
+                    'artist' => 'Загруженный исполнитель',
+                    'title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
+                    'duration_seconds' => rand(150, 240), // В реальном продакшене тут используют getID3
                     'bitrate' => 320,
-                ],
-                'video' => [
-                    'duration_seconds' => rand(60, 3600),
+                ];
+            } elseif (str_contains($mime, 'video')) {
+                $typeName = 'video';
+                $folder = 'videos';
+                $metadata = [
                     'resolution' => '1080p',
                     'codec' => 'h264',
-                ],
-                'document' => [
-                    'extension' => fake()->randomElement(['pdf', 'docx', 'zip']),
+                    'duration_seconds' => rand(30, 600),
+                ];
+            } else {
+                // Всё остальное (zip, pdf, docx) улетает как документы
+                $typeName = 'document';
+                $folder = 'documents';
+                $metadata = [
+                    'extension' => $extension,
                     'is_secure' => true,
-                ],
-                default => null
-            };
+                ];
+            }
+
+            // Вытаскиваем нужный ID из справочника media_types
+            $typeRecord = MediaType::where('name', $typeName)->first();
+            $mediaTypeId = $typeRecord->id;
+
+            // Сохраняем файл на диск в Docker по относительному пути (storage/app/public/uploads/...)
+            $filename = $file->store("uploads/{$folder}", 'public');
         } else {
             // Если это чисто текстовый пост — привяжем его к типу 'document' для совместимости с лентой
             $mediaTypeId = MediaType::where('name', 'document')->first()->id;
         }
 
-        // 3. Используем магию Eloquent для создания поста
+        // 3. Сохраняем и делаем бродкаст real-time события (если Reverb запущен)
         Media::create([
             'media_type_id' => $mediaTypeId,
             'user_id' => $userId,
@@ -140,7 +160,6 @@ class NewsController extends Controller
             'metadata' => $metadata,
         ]);
 
-        // Возвращаем пользователя обратно. Inertia мгновенно обновит пропсы ленты новостей!
         return redirect()->back();
     }
 }
