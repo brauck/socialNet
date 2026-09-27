@@ -1,5 +1,5 @@
 import React from 'react';
-import { useForm, Link } from '@inertiajs/react';
+import { router, useForm, Link } from '@inertiajs/react';
 
 const Login: React.FC = () => {
     // Инициализируем форму через удобный хук Inertia
@@ -11,8 +11,25 @@ const Login: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // Отправляем POST запрос на /login средствами Inertia (без ручных fetch)
-        post('/login');
+
+        // ХАК ДЛЯ FIREFOX: Если браузер сделал "теневое заполнение", 
+        // принудительно вытаскиваем значения прямо из элементов формы (DOM)
+        // Явно говорим TypeScript, что текущая цель — это HTML-форма
+        const form = e.currentTarget as HTMLFormElement;
+        
+        // Теперь элементы формы доступны для безопасного извлечения значений (хак для Firefox)
+        const emailInput = form.elements.namedItem('email') as HTMLInputElement | null;
+        const passwordInput = form.elements.namedItem('password') as HTMLInputElement | null;
+
+        const emailValue = emailInput?.value || data.email;
+        const passwordValue = passwordInput?.value || data.password;
+
+        // Отправляем гарантированно заполненные из DOM данные через Inertia router
+        router.post('/login', {
+            email: emailValue,
+            password: passwordValue,
+            remember: data.remember,
+        });
     };
 
     return (
@@ -25,6 +42,7 @@ const Login: React.FC = () => {
                     <div>
                         <input 
                             type="email" 
+                            name="email"
                             placeholder="Email" 
                             value={data.email}
                             onChange={e => setData('email', e.target.value)}
@@ -37,6 +55,7 @@ const Login: React.FC = () => {
                     <div>
                         <input 
                             type="password" 
+                            name="password" 
                             placeholder="Пароль" 
                             value={data.password}
                             onChange={e => setData('password', e.target.value)}
