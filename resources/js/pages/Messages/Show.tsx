@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react'; // Добавили useState
 import MainLayout from '../../Layouts/MainLayout';
 import { useForm, Link } from '@inertiajs/react';
 
@@ -23,9 +23,17 @@ interface ShowProps {
 }
 
 const Show: React.FC<ShowProps> = ({ chat, messages }) => {
+    // 1. ИНИЦИАЛИЗИРУЕМ ЛОКАЛЬНОЕ СОСТОЯНИЕ ДЛЯ СООБЩЕНИЙ
+    const [localMessages, setLocalMessages] = useState<MessageProps[]>(messages);
+
     const { data, setData, post, processing, reset } = useForm({
         body: '',
     });
+
+    // Синхронизируем локальное состояние, если Inertia обновляет пропсы жестким переходом
+    useEffect(() => {
+        setLocalMessages(messages);
+    }, [messages]);
 
     // Реф для автоматического скролла вниз при открытии чата или новом сообщении
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -34,16 +42,59 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
+    // Теперь автоскролл следит за обновлением локального массива сообщений сокетов!
     useEffect(() => {
         scrollToBottom();
-    }, [messages]);
+    }, [localMessages]);
 
-    const handleSendMessage = (e: React.FormEvent) => {
+    // 2. ПОДКЛЮЧАЕМ ПРИВАТНЫЙ WebSocket-СЛУШАТЕЛЬ LARAVEL ECHO
+    useEffect(() => {
+        // Подключаемся строго к приватному каналу этого конкретного чата
+        const channel = window.Echo.private(`chat.${chat.id}`);
+
+        channel.listen('.message.sent', (e: { messageData: any }) => {
+            console.log('По закрытому каналу прилетело новое сообщение:', e.messageData);
+            
+            // Защита от дублирования: проверяем, нет ли уже такого сообщения в нашем массиве
+            setLocalMessages(prevMessages => {
+                if (prevMessages.some(msg => msg.id === e.messageData.id)) {
+                    return prevMessages;
+                }
+
+                // Мапим структуру бэкенда под интерфейс MessageProps твоего экрана
+                const incomingMessage: MessageProps = {
+                    id: e.messageData.id,
+                    body: e.messageData.body,
+                    sender_id: e.messageData.sender.id,
+                    sender_name: e.messageData.sender.full_name,
+                    is_me: false, // Раз оно прилетело по сокетам — его гарантированно отправил КТО-ТО ДРУГОЙ!
+                    date: 'Только что', // В реальном продакшене тут используют js-библиотеки времени
+                };
+
+                return [...prevMessages, incomingMessage];
+            });
+        });
+
+        // Отписываемся от приватного канала при уходе из чата (SPA-безопасность)
+        return () => {
+            window.Echo.leaveChannel(`chat.${chat.id}`);
+        };
+    }, [chat.id]);
+
+    const handleSendMessage = (e: React.SubmitEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!data.body.trim()) return;
 
+        // Отправляем сообщение на бэкенд
         post(`/messages/${chat.id}`, {
-            onSuccess: () => reset('body'), // Очищаем поле ввода при успехе
+            onSuccess: () => {
+                reset('body'); // Очищаем поле ввода при успехе
+                
+                // Чтобы твое собственное отправленное сообщение появилось на экране СРАЗУ,
+                // Inertia сделает redirect()->back() и обновит пропсы, 
+                // которые наш первый useEffect автоматически положит в localMessages!
+            }, 
+            preserveScroll: true,
         });
     };
 
@@ -59,14 +110,14 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
                     <h2 className="text-sm font-semibold text-gray-800 truncate">{chat.title}</h2>
                 </div>
 
-                {/* 2. Область сообщений (История переписки с автоскроллом) */}
+                {/* 2. Область сообщений (Читаем из localMessages вместо пропсов) */}
                 <div className="flex-grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
-                    {messages.length === 0 ? (
+                    {localMessages.length === 0 ? (
                         <div className="my-auto text-center text-gray-400 text-sm italic">
                             В этом чате пока нет сообщений. Напишите первое!
                         </div>
                     ) : (
-                        messages.map(msg => (
+                        localMessages.map(msg => (
                             <div 
                                 key={msg.id} 
                                 className={`flex gap-3 max-w-[70%] ${msg.is_me ? 'self-end flex-row-reverse' : 'self-start'}`}

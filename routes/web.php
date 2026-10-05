@@ -55,3 +55,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/profile/edit', [ProfileController::class, 'update']);
     Route::delete('/news/{media}', [NewsController::class, 'destroy'])->name('news.destroy');
 });
+
+// Route::get('/favicon.ico', function () {
+//     return response()->file(public_path('favicon.ico'), [
+//         'Content-Type' => 'image/x-icon',
+//         'Cache-Control' => 'no-store, no-cache, must-revalidate',
+//         'Pragma' => 'no-cache',
+//     ]);
+// });

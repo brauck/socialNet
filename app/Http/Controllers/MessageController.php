@@ -7,6 +7,7 @@ use App\Models\Message;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
+use App\Events\MessageSent;
 
 class MessageController extends Controller
 {
@@ -101,26 +102,46 @@ class MessageController extends Controller
     }
 
     // Метод для обработки отправки НОВОГО сообщения
-    public function store(Request $request, Chat $chat)
+    public function store(Request $request, $chatId)
     {
+        // Валидируем ТОЛЬКО текст сообщения, так как сам чат уже проверен роутером
         $request->validate([
-            'body' => ['required', 'string', 'max:1000'],
+            // 'chat_id' => ['required', 'exists:chats,id'],
+            'body' => ['required', 'string', 'max:5000'],
         ]);
 
-        // Безопасность
-        if (!$chat->members()->where('user_id', Auth::id())->exists()) {
-            abort(403);
-        }
+        $userId = Auth::id();
 
-        Message::create([
-            'chat_id' => $chat->id,
-            'sender_id' => Auth::id(),
+        // 1. Сохраняем сообщение в PostgreSQL
+        $message = Message::create([
+            // 'chat_id' => $request->chat_id,
+            'chat_id' => $chatId,
+            'sender_id' => $userId,
             'body' => $request->body,
             'is_read' => false,
         ]);
 
-        // Перенаправляем пользователя обратно на эту же страницу чата. 
-        // Inertia сама обновит массив сообщений на фронтенде без перезагрузки экрана!
-        return redirect()->back();
+        // 2. Жадная загрузка связей для получения данных отправителя (имени и аватара)
+        $message->load(['user.profile']);
+
+        // 3. Формируем чистую структуру данных для фронтенда
+        $formattedMessage = [
+            'id' => $message->id,
+            'chat_id' => $message->chat_id,
+            'body' => $message->body,
+            'is_read' => $message->is_read,
+            'sender' => [
+                'id' => $message->user->id,
+                'full_name' => $message->user->first_name . ' ' . $message->user->last_name,
+                'avatar_url' => $message->user->profile?->avatar_url ? asset('storage/' . $message->user->profile->avatar_url) : null,
+            ],
+            'created_at' => $message->created_at->toIso8601String(), // ISO-формат даты для JS
+        ];
+
+        // 4. Стреляем событием в Reverb. Сигнал улетит по закрытому PrivateChannel
+        // Метод ->toOthers() не будет спамить в нашу собственную вкладку
+        broadcast(new MessageSent($formattedMessage))->toOthers();
+
+        return redirect()->back(); // Обновляем Inertia-стейт
     }
 }
