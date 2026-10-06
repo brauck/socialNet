@@ -42,10 +42,13 @@ class MessageController extends Controller
                         'id' => $chat->lastMessage->id,
                         'body' => $chat->lastMessage->body,
                         'is_read' => $chat->lastMessage->is_read,
-                        'sender_name' => $chat->lastMessage->sender->first_name,
+                        'sender_name' => $chat->lastMessage->sender->first_name,                        
                         'is_me' => $chat->lastMessage->sender_id === $user->id,
                         'date' => $chat->lastMessage->created_at->diffForHumans(), // Красивая дата "3 минуты назад"
                     ] : null,
+                    'interlocutor_avatar' => $interlocutor?->profile?->avatar_url 
+                        ? asset('storage/' . $interlocutor->profile->avatar_url) 
+                        : null,
                 ];
             });
 
@@ -71,16 +74,23 @@ class MessageController extends Controller
 
         // 2. Получаем историю сообщений (вложенная загрузка: сообщение -> автор -> профиль)
         $messages = $chat->messages()
-            ->with('sender.profile')
+            ->with(['user.profile']) // Жорстко подгружаем связи
+            ->oldest() // Сортируем от старых к новым
             ->get()
-            ->map(function ($msg) use ($user) {
+            ->map(function ($message) {
                 return [
-                    'id' => $msg->id,
-                    'body' => $msg->body,
-                    'sender_id' => $msg->sender_id,
-                    'sender_name' => $msg->sender->first_name . ' ' . $msg->sender->last_name,
-                    'is_me' => $msg->sender_id === $user->id,
-                    'date' => $msg->created_at->format('H:i'), // Формат времени "14:32"
+                    'id' => $message->id,
+                    'body' => $message->body,
+                    'sender_id' => $message->sender_id,
+                    'sender_name' => $message->user->first_name . ' ' . $message->user->last_name,
+                    
+                    // КРИТИЧЕСКИ ВАЖНО: Добавляем точное поле, которое мы прописали в Show.tsx!
+                    'sender_avatar' => $message->user->profile?->avatar_url 
+                        ? asset('storage/' . $message->user->profile->avatar_url) 
+                        : null,
+                        
+                    'is_me' => $message->sender_id === Auth::id(),
+                    'date' => $message->created_at->diffForHumans(),
                 ];
             });
 

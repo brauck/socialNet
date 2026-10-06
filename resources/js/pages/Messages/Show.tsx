@@ -7,6 +7,7 @@ interface MessageProps {
     body: string;
     sender_id: number;
     sender_name: string;
+    sender_avatar: string | null;
     is_me: boolean;
     date: string;
 }
@@ -67,6 +68,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
                     body: e.messageData.body,
                     sender_id: e.messageData.sender.id,
                     sender_name: e.messageData.sender.full_name,
+                    sender_avatar: e.messageData.sender.avatar_url,
                     is_me: false, // Раз оно прилетело по сокетам — его гарантированно отправил КТО-ТО ДРУГОЙ!
                     date: 'Только что', // В реальном продакшене тут используют js-библиотеки времени
                 };
@@ -123,9 +125,26 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
                                 className={`flex gap-3 max-w-[70%] ${msg.is_me ? 'self-end flex-row-reverse' : 'self-start'}`}
                             >
                                 {/* Маленькая аватарка */}
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${msg.is_me ? 'bg-blue-100' : 'bg-gray-200'}`}>
-                                    {msg.is_me ? '😎' : '💬'}
+                                {/* Заменяем блок маленькой аватарки внутри localMessages.map */}
+                                <div className={`w-8 h-8 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${msg.is_me ? 'bg-blue-100' : 'bg-gray-200'}`}>
+                                    {msg.is_me ? (
+                                        // Для себя выводим аватарку из глобальных пропсов или заглушку. 
+                                        // Но проще и чище брать msg.sender_avatar, если твой бэкенд прокидывает его и для тебя:
+                                        msg.sender_avatar ? (
+                                            <img src={msg.sender_avatar} alt="Я" className="w-full h-full object-cover" />
+                                        ) : (
+                                            '😎'
+                                        )
+                                    ) : (
+                                        // Для собеседника выводим его реальную аватарку
+                                        msg.sender_avatar ? (
+                                            <img src={msg.sender_avatar} alt="Собеседник" className="w-full h-full object-cover" />
+                                        ) : (
+                                            '💬'
+                                        )
+                                    )}
                                 </div>
+
 
                                 {/* Облако сообщения */}
                                 <div className={`p-3 rounded-xl text-sm relative shadow-sm ${msg.is_me ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'}`}>

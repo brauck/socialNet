@@ -7,7 +7,7 @@ interface LastMessageProps {
     id: number;
     body: string;
     is_read: boolean;
-    sender_name: string;
+    sender_name: string;    
     is_me: boolean;
     date: string;
 }
@@ -17,6 +17,7 @@ interface ChatProps {
     type: 'dialog' | 'group';
     title: string;
     last_message: LastMessageProps | null;
+    interlocutor_avatar: string | null;
 }
 
 interface IndexProps {
@@ -52,8 +53,12 @@ const Index: React.FC<IndexProps> = ({ chats }) => {
                                     className={`flex items-center gap-4 px-5 py-3 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 transition-colors ${isUnread ? 'bg-blue-50/40 hover:bg-blue-50/70' : ''}`}
                                 >
                                     {/* Круглая аватарка чата */}
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shrink-0 ${chat.type === 'group' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
-                                        {chat.type === 'group' ? '👥' : '💬'}
+                                    <div className={`w-12 h-12 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${chat.type === 'group' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                                        {chat.type === 'group' ? '👥' : chat.interlocutor_avatar ? (
+                                            <img src={chat.interlocutor_avatar} alt="Собеседник" className="w-full h-full object-cover" />
+                                        ) : (
+                                            '💬'
+                                        )}
                                     </div>
 
                                     {/* Тело диалога */}
