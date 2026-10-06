@@ -81,6 +81,8 @@ class MessageController extends Controller
                 return [
                     'id' => $message->id,
                     'body' => $message->body,
+                    'filename' => $message->filename,
+                    'file_type' => $message->file_type,
                     'sender_id' => $message->sender_id,
                     'sender_name' => $message->user->first_name . ' ' . $message->user->last_name,
                     
@@ -114,44 +116,67 @@ class MessageController extends Controller
     // Метод для обработки отправки НОВОГО сообщения
     public function store(Request $request, $chatId)
     {
-        // Валидируем ТОЛЬКО текст сообщения, так как сам чат уже проверен роутером
+        // 1. Валидация: текст сообщения обязателен ТОЛЬКО если нет файла. Макс. размер файла — 20 МБ (20480 КБ)
         $request->validate([
-            // 'chat_id' => ['required', 'exists:chats,id'],
-            'body' => ['required', 'string', 'max:5000'],
+            'body' => [$request->hasFile('chat_file') ? 'nullable' : 'required', 'string', 'max:5000'],
+            'chat_file' => ['nullable', 'file', 'max:20480'],
         ]);
 
         $userId = Auth::id();
+        $filename = null;
+        $fileType = null;
 
-        // 1. Сохраняем сообщение в PostgreSQL
+        // 2. Если пользователь прикрепил реальный файл
+        if ($request->hasFile('chat_file')) {
+            $file = $request->file('chat_file');
+            $mime = $file->getMimeType();
+
+            // Автоматически распределяем файлы по папкам и типам в стиле VK/Telegram
+            if (str_contains($mime, 'image')) {
+                $fileType = 'photo';
+                $folder = 'chat_photos';
+            } else {
+                // Всё остальное (pdf, zip, docx) улетает как документы
+                $fileType = 'document';
+                $folder = 'chat_documents';
+            }
+
+            // Сохраняем файл на диск в Docker (storage/app/public/uploads/chat_...)
+            $filename = $file->store("uploads/{$folder}", 'public');
+        }
+
+        // 3. Записываем сообщение со всеми полиморфными полями в PostgreSQL
         $message = Message::create([
-            // 'chat_id' => $request->chat_id,
             'chat_id' => $chatId,
             'sender_id' => $userId,
-            'body' => $request->body,
+            'body' => $request->body ?? '', // если отправили только картинку без текста
+            'filename' => $filename,
+            'file_type' => $fileType,
             'is_read' => false,
         ]);
 
-        // 2. Жадная загрузка связей для получения данных отправителя (имени и аватара)
+        // 4. Жадная загрузка связей для получения аватара автора
         $message->load(['user.profile']);
 
-        // 3. Формируем чистую структуру данных для фронтенда
+        // 5. Формируем полную структуру для трансляции в сокеты
         $formattedMessage = [
             'id' => $message->id,
             'chat_id' => $message->chat_id,
             'body' => $message->body,
+            'filename' => $message->filename, // Пробрасываем путь к файлу
+            'file_type' => $message->file_type, // Пробрасываем тип файла
             'is_read' => $message->is_read,
             'sender' => [
                 'id' => $message->user->id,
                 'full_name' => $message->user->first_name . ' ' . $message->user->last_name,
                 'avatar_url' => $message->user->profile?->avatar_url ? asset('storage/' . $message->user->profile->avatar_url) : null,
             ],
-            'created_at' => $message->created_at->toIso8601String(), // ISO-формат даты для JS
+            'created_at' => $message->created_at->toIso8601String(),
         ];
 
-        // 4. Стреляем событием в Reverb. Сигнал улетит по закрытому PrivateChannel
-        // Метод ->toOthers() не будет спамить в нашу собственную вкладку
+        // 6. Выстреливаем событие по защищенному PrivateChannel
         broadcast(new MessageSent($formattedMessage))->toOthers();
 
-        return redirect()->back(); // Обновляем Inertia-стейт
+        return redirect()->back();
     }
 }
