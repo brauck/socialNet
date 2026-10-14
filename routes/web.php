@@ -45,15 +45,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/communities', [CommunityController::class, 'index']);
     Route::get('/friends', [FriendController::class, 'index']);
-    Route::get('/messages', [MessageController::class, 'index']);
+    // messages
+    Route::get('/messages', [MessageController::class, 'index']);    
     Route::get('/messages/{chat}', [MessageController::class, 'show'])->name('messages.show');
     Route::post('/messages/{chat}', [MessageController::class, 'store']);
+    Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
+    // news
     Route::get('/news', [NewsController::class, 'index']);
     Route::post('/news/{media}/like', [NewsController::class, 'toggleLike']);
     Route::post('/news', [NewsController::class, 'store']);
-    Route::get('/profile/edit', [ProfileController::class, 'edit']);
-    Route::post('/profile/edit', [ProfileController::class, 'update']);
     Route::delete('/news/{media}', [NewsController::class, 'destroy'])->name('news.destroy');
+    // profile
+    Route::get('/profile/edit', [ProfileController::class, 'edit']);
+    Route::post('/profile/edit', [ProfileController::class, 'update']);    
 });
 
 // Route::get('/favicon.ico', function () {

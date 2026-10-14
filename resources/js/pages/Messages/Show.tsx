@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; // Добавили useState
 import MainLayout from '../../Layouts/MainLayout';
-import { useForm, Link } from '@inertiajs/react';
+import { useForm, Link, router } from '@inertiajs/react';
 
 interface AttachmentProps {
     id: number;
@@ -9,6 +9,7 @@ interface AttachmentProps {
     metadata: any;
     likes_count: number;
     liked_by_me: boolean;
+    localUrl?: string;
 }
 
 interface MessageProps {
@@ -92,6 +93,12 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
             });
         });
 
+        // ДОБАВЛЯЕМ НОВОГО СЛУШАТЕЛЯ: Ловим удаление сообщений по сокетам
+        channel.listen('.message.deleted', (e: { messageId: number }) => {
+            console.log('Сокет поймал удаление сообщения:', e.messageId);
+            setLocalMessages(prevMessages => prevMessages.filter(msg => msg.id !== e.messageId));
+        });
+
         // Отписываемся от приватного канала при уходе из чата (SPA-безопасность)
         return () => {
             window.Echo.leaveChannel(`chat.${chat.id}`);
@@ -160,6 +167,17 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
         });
     };
 
+    const handleDeleteMessage = (messageId: number) => {
+        // Оптимистично стираем сообщение у себя на экране мгновенно
+        setLocalMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
+
+        // Фоновый запрос на бэкенд в Docker
+        router.delete(`/messages/${messageId}`, {
+            preserveScroll: true,
+            preserveState: true,
+        });
+    };
+
     return (
         <MainLayout>
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[550px]">
@@ -174,113 +192,93 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
 
                 {/* 2. Область сообщений (Читаем из localMessages вместо пропсов) */}
                 <div className="flex-grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
-                    {localMessages.length === 0 ? (
-                        <div className="my-auto text-center text-gray-400 text-sm italic">
-                            В этом чате пока нет сообщений. Напишите первое!
-                        </div>
-                    ) : (
-                        localMessages.map(msg => (
-                            <div 
-                                key={msg.id} 
-                                className={`flex gap-3 max-w-[70%] ${msg.is_me ? 'self-end flex-row-reverse' : 'self-start'}`}
-                            >
-                                {/* Маленькая аватарка */}
-                                {/* Заменяем блок маленькой аватарки внутри localMessages.map */}
-                                <div className={`w-8 h-8 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${msg.is_me ? 'bg-blue-100' : 'bg-gray-200'}`}>
-                                    {msg.is_me ? (
-                                        // Для себя выводим аватарку из глобальных пропсов или заглушку. 
-                                        // Но проще и чище брать msg.sender_avatar, если твой бэкенд прокидывает его и для тебя:
-                                        msg.sender_avatar ? (
-                                            <img src={msg.sender_avatar} alt="Я" className="w-full h-full object-cover" />
-                                        ) : (
-                                            '😎'
-                                        )
-                                    ) : (
-                                        // Для собеседника выводим его реальную аватарку
-                                        msg.sender_avatar ? (
-                                            <img src={msg.sender_avatar} alt="Собеседник" className="w-full h-full object-cover" />
-                                        ) : (
-                                            '💬'
-                                        )
-                                    )}
-                                </div>
-
-
-                                {/* Облако сообщения */}
-                                <div className={`p-3 rounded-xl text-sm relative shadow-sm ${msg.is_me ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'}`}>
-                                    {chat.type === 'group' && !msg.is_me && (
-                                        <div className="text-[11px] font-semibold text-blue-700 mb-0.5">
-                                            {msg.sender_name}
-                                        </div>
-                                    )}
-                                    <p className="leading-relaxed break-words pr-8">{msg.body}</p>
-
-                                    {/* ЦИКЛ ВЫВОДА ПОЛИМОРФНЫХ ВЛОЖЕНИЙ ИЗ ТАБЛИЦЫ ATTACHMENTS */}
-                                    {msg.attachments && msg.attachments.length > 0 && (
-                                        <div className="mt-2 flex flex-col gap-2">
-                                            {msg.attachments.map(file => (
-                                                <div key={file.id} className="w-full max-w-xs">
-                                                    
-                                                    {/* 1. Если тип вложения — ФОТОГРАФИЯ (object-contain сохраняет пропорции) */}
-                                                    {file.type === 'photo' && file.filename && (
-                                                        <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1">
-                                                            <img 
-                                                                src={`/storage/${file.filename}`} 
-                                                                alt="Прикрепленное фото" 
-                                                                className="max-w-full max-h-60 object-contain rounded-md" 
-                                                            />
-                                                        </div>
-                                                    )}
-
-                                                    {/* 2. Если тип вложения — АУДИОЗАПИСЬ (Настоящий тип из базы!) */}
-                                                    {file.type === 'audio' && (
-                                                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/5 text-xs font-medium text-gray-800">
-                                                            <span className="text-base shrink-0">🎵</span>
-                                                            <div className="truncate flex-grow">
-                                                                <div className="font-semibold truncate">{file.metadata?.title || 'Аудиозапись'}</div>
-                                                                <div className="text-[10px] text-gray-500 mt-0.5">Размер: \${(file.id * 1.2).toFixed(1)} МБ</div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* 3. Если тип вложения — ВИДЕОЗАПИСЬ */}
-                                                    {file.type === 'video' && (
-                                                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/5 text-xs font-medium text-gray-800">
-                                                            <span className="text-base shrink-0">🎥</span>
-                                                            <div className="truncate">
-                                                                <div className="font-semibold truncate">Видеоролик</div>
-                                                                <div className="text-[10px] text-gray-500 mt-0.5">Разрешение: {file.metadata?.resolution || '1080p'}</div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* 4. Если тип вложения — ЛЮБОЙ ДРУГОЙ ДОКУМЕНТ (PDF, ZIP, DOCX) */}
-                                                    {file.type === 'document' && file.filename && (
-                                                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/5 text-xs font-medium text-gray-800 truncate">
-                                                            <span className="text-base shrink-0">📄</span>
-                                                            <a 
-                                                                href={`/storage/${file.filename}`} 
-                                                                target="_blank" 
-                                                                rel="noreferrer" 
-                                                                className="underline hover:text-blue-200 truncate flex-grow"
-                                                            >
-                                                                Открыть документ
-                                                            </a>
-                                                        </div>
-                                                    )}
-
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    <span className={`text-[10px] absolute bottom-1 right-2 ${msg.is_me ? 'text-blue-200' : 'text-gray-400'}`}>
-                                        {msg.date}
-                                    </span>
-                                </div>
+                    {/* НАХОДИМ ЦИКЛ ВЫВОДА СООБЩЕНИЙ ВНУТРИ ОБЛАСТИ ИСТОРИИ ПЕРЕПИСКИ */}
+                    {localMessages.map(msg => (
+                        <div 
+                            key={msg.id} 
+                            // group: позволяет дочерним элементам ловить наведение мыши (hover)
+                            // flex-row-reverse: переворачивает строку для ТВОИХ сообщений (улетают вправо)
+                            className={`flex items-start gap-2 max-w-[75%] group transition-all ${
+                                msg.is_me ? 'self-end flex-row-reverse' : 'self-start flex-row'
+                            }`}
+                        >
+                            {/* 1. АВАТАРКА: Всегда аккуратный круг, не сжимается благодаря shrink-0 */}
+                            <div className={`w-8 h-8 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${
+                                msg.is_me ? 'bg-blue-100' : 'bg-gray-200'
+                            }`}>
+                                {msg.is_me ? (
+                                    msg.sender_avatar ? <img src={msg.sender_avatar} alt="Я" className="w-full h-full object-cover" /> : '😎'
+                                ) : (
+                                    msg.sender_avatar ? <img src={msg.sender_avatar} alt="Собеседник" className="w-full h-full object-cover" /> : '💬'
+                                )}
                             </div>
-                        ))
-                    )}
+
+                            {/* 2. ОБЛАКО СООБЩЕНИЯ: Автоматически подстраивается под контент */}
+                            <div className={`p-3 rounded-xl text-sm relative shadow-sm max-w-full ${
+                                msg.is_me 
+                                    ? 'bg-blue-600 text-white rounded-tr-none' 
+                                    : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'
+                            }`}>
+                                {/* Имя отправителя для групповых чатов */}
+                                {chat.type === 'group' && !msg.is_me && (
+                                    <div className="text-[11px] font-semibold text-blue-700 mb-1">
+                                        {msg.sender_name}
+                                    </div>
+                                )}
+                                
+                                {/* Текст сообщения с отступом справа под время */}
+                                <p className="leading-relaxed break-words pr-10">{msg.body}</p>
+                                
+                                {/* Вывод вложений (цикл .map вложений, который мы отладили ранее) */}
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                    <div className="mt-2 flex flex-col gap-2">
+                                        {msg.attachments.map(file => (
+                                            <div key={file.id} className="w-full">
+                                                {file.type === 'photo' && file.filename && (
+                                                    <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1 max-w-xs">
+                                                        <img 
+                                                            src={file.localUrl ? file.localUrl : `/storage/${file.filename}`} 
+                                                            alt="Вложение" 
+                                                            className="max-w-full max-h-48 object-contain rounded-md" 
+                                                        />
+                                                    </div>
+                                                )}
+                                                {file.type === 'document' && file.filename && (
+                                                    <div className="flex items-center gap-2 p-2 rounded-lg bg-black/5 text-xs font-medium truncate max-w-xs">
+                                                        <span>📄</span>
+                                                        <a href={`/storage/${file.filename}`} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
+                                                            Открыть документ
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {/* Метка времени в нижнем правом углу */}
+                                <span className={`text-[9px] absolute bottom-1 right-2 shrink-0 ${
+                                    msg.is_me ? 'text-blue-200' : 'text-gray-400'
+                                }`}>
+                                    {msg.date}
+                                </span>
+                            </div>
+
+                            {/* 3. КНОПКА УДАЛЕНИЯ (КОРЗИНА): */}
+                            {/* Встает идеально рядом с облачком. Для твоих сообщений она будет СЛЕВА от текста благодаря flex-row-reverse */}
+                            {msg.is_me && (
+                                <button
+                                    onClick={() => handleDeleteMessage(msg.id)}
+                                    // opacity-0 group-hover:opacity-100: Кнопка скрыта и плавно проявляется только при наведении на элемент!
+                                    className="opacity-0 group-hover:opacity-100 transition-all duration-150 text-gray-400 hover:text-red-500 text-xs p-1.5 rounded-full hover:bg-gray-100 shrink-0 self-center"
+                                    title="Удалить сообщение"
+                                >
+                                    🗑️
+                                </button>
+                            )}
+
+                        </div>
+                    ))}
                     <div ref={messagesEndRef} />
                 </div>
 

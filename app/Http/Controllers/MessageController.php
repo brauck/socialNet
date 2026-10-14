@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Events\MessageSent;
+use App\Events\MessageDeleted;
 
 class MessageController extends Controller
 {
@@ -216,6 +217,25 @@ class MessageController extends Controller
         ];
 
         broadcast(new MessageSent($formattedMessage))->toOthers();
+
+        return redirect()->back();
+    }
+
+    public function destroy(Message $message)
+    {
+        // Безопасность: удалять сообщение может только его автор
+        if ($message->sender_id !== Auth::id()) {
+            abort(403, 'У вас нет прав на удаление этого сообщения.');
+        }
+
+        $chatId = $message->chat_id;
+        $messageId = $message->id;
+
+        // Удаляем сообщение из PostgreSQL (каскадом удалятся и вложения из attachments)
+        $message->delete();
+
+        // Транслируем событие удаления всем ОСТАЛЬНЫМ участникам чата в реальном времени
+        broadcast(new MessageDeleted($chatId, $messageId))->toOthers();
 
         return redirect()->back();
     }
