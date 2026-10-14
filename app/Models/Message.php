@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 class Message extends Model
 {
@@ -28,6 +29,11 @@ class Message extends Model
     {
         // Явно говорим Laravel: связь идет с моделью User, но через поле sender_id!
         return $this->belongsTo(User::class, 'sender_id');
+    }
+
+    public function media(): MorphToMany
+    {
+        return $this->morphToMany(Media::class, 'attachable', 'attachments');
     }
 }
 

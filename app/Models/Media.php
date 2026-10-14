@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 class Media extends Model
 {
@@ -29,6 +30,11 @@ class Media extends Model
     public function likes()
     {
         return $this->hasMany(Like::class);
+    }
+
+        public function messages(): MorphToMany
+    {
+        return $this->morphedByMany(Message::class, 'attachable', 'attachments');
     }
 }
 

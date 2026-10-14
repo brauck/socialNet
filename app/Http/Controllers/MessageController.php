@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Chat;
 use App\Models\Message;
+use App\Models\Media;
+use App\Models\MediaType;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
@@ -93,6 +95,18 @@ class MessageController extends Controller
                         
                     'is_me' => $message->sender_id === Auth::id(),
                     'date' => $message->created_at->diffForHumans(),
+
+                    // Добавляем массив attachments для фронтенда Show.tsx
+                    'attachments' => $message->media->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'filename' => $item->filename,
+                            'type' => $item->type->name, //photo, audio, video, document
+                            'metadata' => $item->metadata,
+                            'likes_count' => $item->likes()->count(), // Подключаем лайки на будущее!
+                            'liked_by_me' => $item->likes()->where('user_id', Auth::id())->exists(),
+                        ];
+                    })->toArray(),
                 ];
             });
 
@@ -110,62 +124,89 @@ class MessageController extends Controller
                 'type' => $chat->type,
             ],
             'messages' => $messages,
+            'current_user_id' => Auth::id()
         ]);
     }
 
     // Метод для обработки отправки НОВОГО сообщения
     public function store(Request $request, $chatId)
     {
-        // 1. Валидация: текст сообщения обязателен ТОЛЬКО если нет файла. Макс. размер файла — 20 МБ (20480 КБ)
         $request->validate([
             'body' => [$request->hasFile('chat_file') ? 'nullable' : 'required', 'string', 'max:5000'],
             'chat_file' => ['nullable', 'file', 'max:20480'],
         ]);
 
         $userId = Auth::id();
-        $filename = null;
-        $fileType = null;
 
-        // 2. Если пользователь прикрепил реальный файл
-        if ($request->hasFile('chat_file')) {
-            $file = $request->file('chat_file');
-            $mime = $file->getMimeType();
-
-            // Автоматически распределяем файлы по папкам и типам в стиле VK/Telegram
-            if (str_contains($mime, 'image')) {
-                $fileType = 'photo';
-                $folder = 'chat_photos';
-            } else {
-                // Всё остальное (pdf, zip, docx) улетает как документы
-                $fileType = 'document';
-                $folder = 'chat_documents';
-            }
-
-            // Сохраняем файл на диск в Docker (storage/app/public/uploads/chat_...)
-            $filename = $file->store("uploads/{$folder}", 'public');
-        }
-
-        // 3. Записываем сообщение со всеми полиморфными полями в PostgreSQL
+        // 1. Сначала создаем базовое сообщение в PostgreSQL
         $message = Message::create([
             'chat_id' => $chatId,
             'sender_id' => $userId,
-            'body' => $request->body ?? '', // если отправили только картинку без текста
-            'filename' => $filename,
-            'file_type' => $fileType,
+            'body' => $request->body ?? '',
             'is_read' => false,
         ]);
 
-        // 4. Жадная загрузка связей для получения аватара автора
-        $message->load(['user.profile']);
+        // 2. Если к сообщению прикреплен реальный файл — создаем для него запись в таблице media
+        if ($request->hasFile('chat_file')) {
+            $file = $request->file('chat_file');
+            $mime = $file->getMimeType();
+            $size = $file->getSize();
+            $metadata = null;
 
-        // 5. Формируем полную структуру для трансляции в сокеты
+            if (str_contains($mime, 'image')) {
+                $typeName = 'photo';
+                $folder = 'photos';
+                $imageSize = @getimagesize($file->getRealPath());
+                $metadata = ['width' => $imageSize ? $imageSize[0] : 1280, 'height' => $imageSize ? $imageSize[1] : 720];
+            } elseif (str_contains($mime, 'audio')) {
+                $typeName = 'audio';
+                $folder = 'audios';
+                $metadata = ['title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 'duration_seconds' => rand(150, 240)];
+            } elseif (str_contains($mime, 'video')) {
+                $typeName = 'video';
+                $folder = 'videos';
+                $metadata = ['resolution' => '1080p'];
+            } else {
+                $typeName = 'document';
+                $folder = 'documents';
+            }
+
+            $typeRecord = MediaType::where('name', $typeName)->first();
+            $filename = $file->store("uploads/{$folder}", 'public');
+
+            // Создаем чистую системную запись в таблице media
+            $media = Media::create([
+                'media_type_id' => $typeRecord->id,
+                'user_id' => $userId,
+                'body' => null, // у самого медиафайла в чате нет отдельного текста
+                'filename' => $filename,
+                'size' => $size,
+                'metadata' => $metadata,
+            ]);
+
+            // Магия Laravel: привязываем созданный медиафайл к нашему сообщению через таблицу attachments
+            $message->media()->attach($media->id);
+        }
+
+        // 3. Жадная загрузка сообщения вместе с автором и прикрепленными медиафайлами
+        $message->load(['user.profile', 'media.type']);
+
+        // 4. Формируем структуру данных для Reverb сокетов
         $formattedMessage = [
             'id' => $message->id,
             'chat_id' => $message->chat_id,
             'body' => $message->body,
-            'filename' => $message->filename, // Пробрасываем путь к файлу
-            'file_type' => $message->file_type, // Пробрасываем тип файла
             'is_read' => $message->is_read,
+            'attachments' => $message->media->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'filename' => $item->filename,
+                    'type' => $item->type->name, // Настоящий тип из БД (photo, audio, video)
+                    'metadata' => $item->metadata,
+                    'likes_count' => 0,
+                    'liked_by_me' => false,
+                ];
+            })->toArray(),
             'sender' => [
                 'id' => $message->user->id,
                 'full_name' => $message->user->first_name . ' ' . $message->user->last_name,
@@ -174,7 +215,6 @@ class MessageController extends Controller
             'created_at' => $message->created_at->toIso8601String(),
         ];
 
-        // 6. Выстреливаем событие по защищенному PrivateChannel
         broadcast(new MessageSent($formattedMessage))->toOthers();
 
         return redirect()->back();

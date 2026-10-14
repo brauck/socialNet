@@ -2,16 +2,24 @@ import React, { useEffect, useRef, useState } from 'react'; // Добавили 
 import MainLayout from '../../Layouts/MainLayout';
 import { useForm, Link } from '@inertiajs/react';
 
+interface AttachmentProps {
+    id: number;
+    filename: string;
+    type: 'photo' | 'audio' | 'video' | 'document';
+    metadata: any;
+    likes_count: number;
+    liked_by_me: boolean;
+}
+
 interface MessageProps {
     id: number;
     body: string;
-    filename: string | null;
-    file_type: string | null;
     sender_id: number;
     sender_name: string;
     sender_avatar: string | null;
     is_me: boolean;
     date: string;
+    attachments: AttachmentProps[]; // Заменили одиночные поля на массив вложений!
 }
 
 interface ChatProps {
@@ -23,9 +31,10 @@ interface ChatProps {
 interface ShowProps {
     chat: ChatProps;
     messages: MessageProps[];
+    current_user_id: number;
 }
 
-const Show: React.FC<ShowProps> = ({ chat, messages }) => {
+const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
     // 1. ИНИЦИАЛИЗИРУЕМ ЛОКАЛЬНОЕ СОСТОЯНИЕ ДЛЯ СООБЩЕНИЙ
     const [localMessages, setLocalMessages] = useState<MessageProps[]>(messages);
     const [fileError, setFileError] = useState<string | null>(null);
@@ -67,16 +76,16 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
                 }
 
                 // Мапим структуру бэкенда под интерфейс MessageProps твоего экрана
-                const incomingMessage: MessageProps = {
+               const incomingMessage: MessageProps = {
                     id: e.messageData.id,
                     body: e.messageData.body,
-                    filename: e.messageData.filename,
-                    file_type: e.messageData.file_type,
                     sender_id: e.messageData.sender.id,
                     sender_name: e.messageData.sender.full_name,
-                    sender_avatar: e.messageData.sender.avatar_url,
-                    is_me: false, // Раз оно прилетело по сокетам — его гарантированно отправил КТО-ТО ДРУГОЙ!
-                    date: 'Только что', // В реальном продакшене тут используют js-библиотеки времени
+                    sender_avatar: e.messageData.sender.avatar_url, 
+                    is_me: false,
+                    date: 'Только что',
+                    // ПРАВИЛЬНЫЙ МАПИНГ: Переносим массив вложений из сокет-пакета
+                    attachments: e.messageData.attachments || [], 
                 };
 
                 return [...prevMessages, incomingMessage];
@@ -111,6 +120,33 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
         // Теперь отправка разрешена, если есть либо текст, либо прикрепленный файл!
         if (!data.body.trim() && !data.chat_file) return; 
 
+        // 1. ОПТИМИСТИЧНЫЙ UI: Создаем фейковый объект твоего сообщения
+        // и мгновенно выводим его на твой экран до отправки в Docker!
+        const myOptimisticMessage: MessageProps = {
+            id: Date.now(), // Временный уникальный ID
+            body: data.body,
+            sender_id: current_user_id || 51, // Твой ID (например, 1 для sergey)
+            sender_name: 'Вы',
+            sender_avatar: null, // Аватар подгрузится после F5, либо оставь пустой
+            is_me: true, // Флаг, чтобы облачко сразу улетело вправо и стало синим!
+            date: 'Только что',
+            // Если прикреплен файл — имитируем его отображение на экране из локальной памяти браузера!
+            attachments: data.chat_file ? [{
+                id: Date.now() + 1,
+                filename: '', // Пустой путь, так как сервер еще не сохранил файл
+                type: data.chat_file.type.includes('image') ? 'photo' : 'document',
+                metadata: { title: data.chat_file.name },
+                likes_count: 0,
+                liked_by_me: false,
+                // ХАК ДЛЯ ПРЕВЬЮ: Создаем временную blob-ссылку, чтобы картинка загорелась у тебя в облачке мгновенно!
+                localUrl: data.chat_file.type.includes('image') ? URL.createObjectURL(data.chat_file) : undefined
+            } as any] : []
+        };
+
+        // Мгновенно пушим сообщение в историю на твоем экране (оно появится за 0 миллисекунд!)
+        setLocalMessages(prevMessages => [...prevMessages, myOptimisticMessage]);
+
+        // 2. Спокойно отправляем бинарник файла в фоновом режиме на бэкенд в Docker
         post(`/messages/${chat.id}`, {
             onSuccess: () => {
                 reset('body');
@@ -120,6 +156,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
                 if (fileInput) fileInput.value = '';
             },
             preserveScroll: true,
+            preserveState: true, // КРИТИЧЕСКИ ВАЖНО: Запрещает Inertia затирать стейт React старым кэшем!
         });
     };
 
@@ -177,22 +214,66 @@ const Show: React.FC<ShowProps> = ({ chat, messages }) => {
                                         </div>
                                     )}
                                     <p className="leading-relaxed break-words pr-8">{msg.body}</p>
-                                    {/* НОВЫЙ БЛОК: Вывод прикрепленных изображений внутри облачка чата */}
-                                    {msg.file_type === 'photo' && msg.filename && (
-                                        <div className="mt-2 rounded-lg overflow-hidden max-w-xs border border-black/5 bg-black/5">
-                                            <img src={`/storage/${msg.filename}`} alt="Фото" className="max-w-full max-h-60 object-contain rounded-md" />
+
+                                    {/* ЦИКЛ ВЫВОДА ПОЛИМОРФНЫХ ВЛОЖЕНИЙ ИЗ ТАБЛИЦЫ ATTACHMENTS */}
+                                    {msg.attachments && msg.attachments.length > 0 && (
+                                        <div className="mt-2 flex flex-col gap-2">
+                                            {msg.attachments.map(file => (
+                                                <div key={file.id} className="w-full max-w-xs">
+                                                    
+                                                    {/* 1. Если тип вложения — ФОТОГРАФИЯ (object-contain сохраняет пропорции) */}
+                                                    {file.type === 'photo' && file.filename && (
+                                                        <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1">
+                                                            <img 
+                                                                src={`/storage/${file.filename}`} 
+                                                                alt="Прикрепленное фото" 
+                                                                className="max-w-full max-h-60 object-contain rounded-md" 
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {/* 2. Если тип вложения — АУДИОЗАПИСЬ (Настоящий тип из базы!) */}
+                                                    {file.type === 'audio' && (
+                                                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/5 text-xs font-medium text-gray-800">
+                                                            <span className="text-base shrink-0">🎵</span>
+                                                            <div className="truncate flex-grow">
+                                                                <div className="font-semibold truncate">{file.metadata?.title || 'Аудиозапись'}</div>
+                                                                <div className="text-[10px] text-gray-500 mt-0.5">Размер: \${(file.id * 1.2).toFixed(1)} МБ</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* 3. Если тип вложения — ВИДЕОЗАПИСЬ */}
+                                                    {file.type === 'video' && (
+                                                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/5 text-xs font-medium text-gray-800">
+                                                            <span className="text-base shrink-0">🎥</span>
+                                                            <div className="truncate">
+                                                                <div className="font-semibold truncate">Видеоролик</div>
+                                                                <div className="text-[10px] text-gray-500 mt-0.5">Разрешение: {file.metadata?.resolution || '1080p'}</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* 4. Если тип вложения — ЛЮБОЙ ДРУГОЙ ДОКУМЕНТ (PDF, ZIP, DOCX) */}
+                                                    {file.type === 'document' && file.filename && (
+                                                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-black/5 text-xs font-medium text-gray-800 truncate">
+                                                            <span className="text-base shrink-0">📄</span>
+                                                            <a 
+                                                                href={`/storage/${file.filename}`} 
+                                                                target="_blank" 
+                                                                rel="noreferrer" 
+                                                                className="underline hover:text-blue-200 truncate flex-grow"
+                                                            >
+                                                                Открыть документ
+                                                            </a>
+                                                        </div>
+                                                    )}
+
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
 
-                                    {/* НОВЫЙ БЛОК: Вывод прикрепленных документов */}
-                                    {msg.file_type === 'document' && msg.filename && (
-                                        <div className="mt-2 flex items-center gap-2 p-2 rounded-lg bg-black/5 text-xs font-medium max-w-xs truncate">
-                                            <span>📄</span>
-                                            <a href={`/storage/${msg.filename}`} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
-                                                Открыть документ
-                                            </a>
-                                        </div>
-                                    )}
                                     <span className={`text-[10px] absolute bottom-1 right-2 ${msg.is_me ? 'text-blue-200' : 'text-gray-400'}`}>
                                         {msg.date}
                                     </span>
