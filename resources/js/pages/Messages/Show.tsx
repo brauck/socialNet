@@ -168,6 +168,10 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
     };
 
     const handleDeleteMessage = (messageId: number) => {
+        // Подтверждение удаления
+        const isConfirmed = window.confirm('Вы уверены, что хотите удалить это сообщение? Это действие нельзя отменить.');
+        if (!isConfirmed) return;
+        
         // Оптимистично стираем сообщение у себя на экране мгновенно
         setLocalMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
 
