@@ -11,6 +11,9 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Events\MessageDeleted;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class MessageController extends Controller
 {
@@ -221,9 +224,62 @@ class MessageController extends Controller
         return redirect()->back();
     }
 
+    // public function destroy(Message $message)
+    // {
+    //     if ($message->sender_id !== Auth::id()) {
+    //         abort(403, 'У вас нет прав на удаление этого сообщения.');
+    //     }
+
+    //     $chatId = $message->chat_id;
+    //     $messageId = $message->id;
+
+    //     // 1. Собираем медиафайлы до удаления
+    //     $attachedMedia = $message->media()->get();
+
+    //     Log::info("=== НАЧАЛО УДАЛЕНИЯ СООБЩЕНИЯ №{$messageId} ===");
+    //     Log::info("Найдено прикрепленных файлов: " . $attachedMedia->count());
+
+    //     // 2. ХАК ДЛЯ ОЧИСТКИ: Принудительно разрываем полиморфную связь Многие-ко-Многим!
+    //     // Это мгновенно удалит строки из таблицы attachments ДЛЯ ЭТОГО сообщения
+    //     $message->media()->detach();
+    //     Log::info("Связи в attachments для сообщения №{$messageId} успешно разорваны (detached).");
+
+    //     // 3. Теперь спокойно удаляем само сообщение из PostgreSQL
+    //     $message->delete();
+
+    //     // 4. Проверяем каждый файл на сиротство
+    //     foreach ($attachedMedia as $mediaItem) {
+    //         // Проверяем, использует ли этот файл КТО-НИБУДЬ ЕЩЕ (в других сообщениях)
+    //         $isStillUsed = DB::table('attachments')
+    //             ->where('media_id', $mediaItem->id)
+    //             ->exists();
+
+    //         Log::info("Проверка файла №{$mediaItem->id} ({$mediaItem->filename}): Используется кем-то еще? " . ($isStillUsed ? 'ДА' : 'НЕТ'));
+
+    //         if (!$isStillUsed) {
+    //             // а) Удаляем физический захешированный файл с диска Ubuntu
+    //             if (Storage::disk('public')->exists($mediaItem->filename)) {
+    //                 Storage::disk('public')->delete($mediaItem->filename);
+    //                 Log::info("Бинарник файла физически СТЕРТ с жесткого диска.");
+    //             } else {
+    //                 Log::warning("Внимание: Запись в БД есть, но файла на диске не найдено: " . $mediaItem->filename);
+    //             }
+
+    //             // б) Удаляем саму запись из media (PostgreSQL каскадом очистит лайки!)
+    //             $mediaItem->delete();
+    //             Log::info("Запись файла №{$mediaItem->id} полностью удалена из таблицы media.");
+    //         }
+    //     }
+
+    //     Log::info("=== УДАЛЕНИЕ СООБЩЕНИЯ №{$messageId} ЗАВЕРШЕНО ===");
+
+    //     broadcast(new MessageDeleted($chatId, $messageId))->toOthers();
+
+    //     return redirect()->back();
+    // }
+
     public function destroy(Message $message)
     {
-        // Безопасность: удалять сообщение может только его автор
         if ($message->sender_id !== Auth::id()) {
             abort(403, 'У вас нет прав на удаление этого сообщения.');
         }
@@ -231,12 +287,51 @@ class MessageController extends Controller
         $chatId = $message->chat_id;
         $messageId = $message->id;
 
-        // Удаляем сообщение из PostgreSQL (каскадом удалятся и вложения из attachments)
-        $message->delete();
+        // Массив, куда мы сохраним пути к файлам, которые НУЖНО будет стереть с диска ПОСЛЕ коммита
+        $filesToDelete = [];
 
-        // Транслируем событие удаления всем ОСТАЛЬНЫМ участникам чата в реальном времени
+        // ЗАПУСКАЕМ ЖЕЛЕЗОБЕТОННУЮ ТРАНЗАКЦИЮ БАЗЫ ДАННЫХ
+        DB::transaction(function () use ($message, &$filesToDelete) {
+            
+            // 1. Находим файлы до удаления связей
+            $attachedMedia = $message->media()->get();
+
+            Log::info("=== НАЧАЛО УДАЛЕНИЯ СООБЩЕНИЯ №{$message->id} ===");
+            Log::info("Найдено прикрепленных файлов: " . $attachedMedia->count());
+
+            // 2. Разрываем полиморфные связи в attachments
+            $message->media()->detach();
+
+            // 3. Удаляем само сообщение
+            $message->delete();
+
+            // 4. Проверяем каждый файл на сиротство внутри транзакции
+            foreach ($attachedMedia as $mediaItem) {
+                $isStillUsed = DB::table('attachments')
+                    ->where('media_id', $mediaItem->id)
+                    ->exists();
+
+                if (!$isStillUsed) {
+                    // Запоминаем путь к файлу для физического удаления ПОСЛЕ коммита
+                    $filesToDelete[] = $mediaItem->filename;
+
+                    // Удаляем строчку из media (каскад СУБД сотрет лайки!)
+                    $mediaItem->delete();
+                }
+            }
+        }); // Здесь Laravel автоматически сделает COMMIT, если всё прошло гладко!
+
+        // 5. ОЧИСТКА ДИСКА: Выполняется строго ПОСЛЕ успешного коммита в PostgreSQL!
+        foreach ($filesToDelete as $filename) {
+            if (Storage::disk('public')->exists($filename)) {
+                Storage::disk('public')->delete($filename);
+            }
+        }
+
+        // 6. Вещаем событие удаления в сокеты Reverb
         broadcast(new MessageDeleted($chatId, $messageId))->toOthers();
 
         return redirect()->back();
     }
+
 }
