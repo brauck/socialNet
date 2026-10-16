@@ -38,9 +38,10 @@ interface ShowProps {
 const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
     // 1. ИНИЦИАЛИЗИРУЕМ ЛОКАЛЬНОЕ СОСТОЯНИЕ ДЛЯ СООБЩЕНИЙ
     const [localMessages, setLocalMessages] = useState<MessageProps[]>(messages);
+    const [editingMessage, setEditingMessage] = useState<MessageProps | null>(null);
     const [fileError, setFileError] = useState<string | null>(null);
 
-    const { data, setData, post, processing, reset } = useForm({
+    const { data, setData, post, put, processing, reset } = useForm({
         body: '',
         chat_file: null as File | null, // Сюда будет падать бинарник файла
     });
@@ -99,6 +100,13 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
             setLocalMessages(prevMessages => prevMessages.filter(msg => msg.id !== e.messageId));
         });
 
+        channel.listen('.message.updated', (e: { messageId: number; newBody: string }) => {
+            console.log('Сокет поймал редактирование сообщения:', e.messageId);
+            setLocalMessages(prevMessages => 
+                prevMessages.map(msg => msg.id === e.messageId ? { ...msg, body: e.newBody } : msg)
+            );
+        });
+
         // Отписываемся от приватного канала при уходе из чата (SPA-безопасность)
         return () => {
             window.Echo.leaveChannel(`chat.${chat.id}`);
@@ -122,7 +130,53 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
         }
     };
 
+    // Вспомогательные функции для редактирования сообщения
+    // Вход в режим редактирования (вызывается по клику на карандаш)
+    const startEditMessage = (msg: MessageProps) => {
+        setEditingMessage(msg);
+        setData('body', msg.body); // Вставляем старый текст в инпут
+    };
+
+    // Выход из режима редактирования (клик на крестик отмены)
+    const cancelEditMessage = () => {
+        setEditingMessage(null);
+        reset('body');
+    };
+
     const handleSendMessage = (e: React.SubmitEvent<HTMLFormElement>) => {
+        // КРИТИЧЕСКИ ВАЖНО: Эта строчка должна стоять на самом первом месте!
+        // Она полностью отключает нативную перезагрузку HTML-страницы в Chrome и Firefox!
+        e.preventDefault(); 
+
+        if (editingMessage) {
+            if (!data.body.trim()) return;
+
+            const msgId = editingMessage.id;
+            const updatedBody = data.body;
+
+            // 1. Оптимистично обновляем буквы на экране у себя
+            setLocalMessages(prevMessages => 
+                prevMessages.map(msg => msg.id === msgId ? { ...msg, body: updatedBody } : msg)
+            );
+            
+            console.log("before PUT via useForm, msgId: ", msgId);
+
+            // 2. ИСПОЛЬЗУЕМ МЕТОД put ИЗ ХУКА useForm (вместо router.post)
+            // Inertia сама под капотом упакует это в POST с маркером _method=PUT,
+            // правильно обработает AJAX и предотвратит ЛЮБЫЕ перезагрузки страниц!
+            put(`/messages/${msgId}`, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => {
+                    // Очищаем стейты строго ПОСЛЕ успешного ответа сервера
+                    setEditingMessage(null);
+                    reset('body');
+                    console.log("PUT request successfully finished");
+                }
+            });
+
+            return; // Выходим из функции, чтобы не сработал код отправки нового сообщения
+        }
         e.preventDefault();
         // Теперь отправка разрешена, если есть либо текст, либо прикрепленный файл!
         if (!data.body.trim() && !data.chat_file) return; 
@@ -271,14 +325,21 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                             {/* 3. КНОПКА УДАЛЕНИЯ (КОРЗИНА): */}
                             {/* Встает идеально рядом с облачком. Для твоих сообщений она будет СЛЕВА от текста благодаря flex-row-reverse */}
                             {msg.is_me && (
-                                <button
-                                    onClick={() => handleDeleteMessage(msg.id)}
-                                    // opacity-0 group-hover:opacity-100: Кнопка скрыта и плавно проявляется только при наведении на элемент!
-                                    className="opacity-0 group-hover:opacity-100 transition-all duration-150 text-gray-400 hover:text-red-500 text-xs p-1.5 rounded-full hover:bg-gray-100 shrink-0 self-center"
-                                    title="Удалить сообщение"
-                                >
-                                    🗑️
-                                </button>
+                                <div className="opacity-0 group-hover:opacity-100" >
+                                    <button
+                                        onClick={() => handleDeleteMessage(msg.id)}
+                                        // opacity-0 group-hover:opacity-100: Кнопка скрыта и плавно проявляется только при наведении на элемент!
+                                        className="transition-all duration-150 text-gray-400 hover:text-red-500 text-xs p-1.5 rounded-full hover:bg-gray-100 shrink-0 self-center"
+                                        title="Удалить сообщение"
+                                    >
+                                        🗑️
+                                    </button>
+                                    <span>
+                                        <button onClick={() => startEditMessage(msg)} className="text-gray-400 hover:text-blue-600 text-xs p-1 hover:bg-gray-100">
+                                            ✏️
+                                        </button>
+                                    </span>
+                                </div>
                             )}
 
                         </div>
@@ -289,6 +350,12 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                 {/* 3. Форма отправки сообщения (Нижняя панель) */}
                 {/* Заменяем блок формы отправки (Нижняя панель) */}
                 <div className="p-4 border-t border-gray-100 bg-white shrink-0 flex flex-col gap-2">
+                    {editingMessage && (
+                        <div className="flex justify-between bg-blue-50 border border-blue-100 px-4 py-1.5 rounded-lg text-xs font-medium text-blue-700 mb-2">
+                            <span>✏️ Редактирование: <span className="italic text-gray-500">"{editingMessage.body}"</span></span>
+                            <button onClick={cancelEditMessage} className="text-blue-400 hover:text-blue-700 font-bold">✕</button>
+                        </div>
+                    )}
                     <form onSubmit={handleSendMessage} className="flex gap-3 items-center">
                         
                         {/* Кнопка-скрепка прикрепления файлов */}

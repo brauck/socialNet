@@ -11,6 +11,7 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Events\MessageDeleted;
+use App\Events\MessageUpdated;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -330,6 +331,32 @@ class MessageController extends Controller
 
         // 6. Вещаем событие удаления в сокеты Reverb
         broadcast(new MessageDeleted($chatId, $messageId))->toOthers();
+
+        return redirect()->back();
+    }
+
+    public function update(Request $request, Message $message)
+    {
+        Log::info("=== START UPDATE ===");
+        // Безопасность: изменять текст сообщения может только его отправитель
+        if ($message->sender_id !== Auth::id()) {
+            abort(403, 'У вас нет прав на редактирование этого сообщения.');
+        }
+
+        // Валидация измененного текста
+        $request->validate([
+            'body' => ['required', 'string', 'max:5000'],
+        ]);
+
+        // Обновляем текст в PostgreSQL
+        $message->update([
+            'body' => $request->body,
+        ]);
+
+        Log::info("Текст сообщения №{$message->id} успешно изменен в БД.");
+
+        // Отправляем сигнал изменения остальным участникам чата в реальном времени
+        broadcast(new MessageUpdated($message->chat_id, $message->id, $message->body))->toOthers();
 
         return redirect()->back();
     }

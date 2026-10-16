@@ -50,6 +50,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/messages/{chat}', [MessageController::class, 'show'])->name('messages.show');
     Route::post('/messages/{chat}', [MessageController::class, 'store']);
     Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
+    Route::put('/messages/{message}', [MessageController::class, 'update'])->name('messages.update');
+
     // news
     Route::get('/news', [NewsController::class, 'index']);
     Route::post('/news/{media}/like', [NewsController::class, 'toggleLike']);
