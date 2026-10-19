@@ -18,6 +18,7 @@ interface PostProps {
         avatar_url: string | null;
     };
     date: string;
+    is_update: boolean;
 }
 
 interface IndexProps {
@@ -28,13 +29,15 @@ interface IndexProps {
 const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
     const [localPosts, setLocalPosts] = useState<PostProps[]>(posts);
     const [fileError, setFileError] = useState<string | null>(null);
+    const [editingPost, setEditingPost] = useState<PostProps | null>(null);
+
 
     // Инициализируем форму создания поста через хук Inertia
     // const { data, setData, post, processing, reset, errors } = useForm({
     //     body: '',
     //     media_type: 'none', // По умолчанию без вложений
     // });
-    const { data, setData, post, processing, reset, errors } = useForm({
+    const { data, setData, post, put, processing, reset, errors } = useForm({
         body: '',
         media_file: null as File | null, // Сюда будет падать реальный файл
     });
@@ -70,8 +73,22 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
         channel.listen('.post.published', (e: { post: PostProps }) => {
             console.log('Real-time сокет поймал новую публикацию постов:', e.post);
             
-            // Добавляем свежий прилетевший пост в САМОЕ НАЧАЛО массива (в самый верх ленты новостей)
-            setLocalPosts(prevPosts => [e.post, ...prevPosts]);
+            if (e.post.is_update) {
+                // 1. НАДЕЖНОЕ ОБНОВЛЕНИЕ: Точечно меняем только body существующего поста
+                setLocalPosts(prevPosts => 
+                    prevPosts.map(p => p.id === e.post.id ? { ...p, body: e.post.body } : p)
+                );
+            } else {
+                // 2. ЗАЩИТА ОТ ДУБЛИРОВАНИЯ КЛЮЧЕЙ: 
+                // Проверяем, не успела ли Inertia уже добавить этот пост в пропсы
+                setLocalPosts(prevPosts => {
+                    if (prevPosts.some(p => p.id === e.post.id)) {
+                        return prevPosts; // Если пост с таким ID уже есть, игнорируем пакет сокета
+                    }
+                    // Если поста еще нет — безопасно пушим его на самый верх ленты
+                    return [e.post, ...prevPosts];
+                });
+            }
         });
 
         // Удаление постов по сокетам
@@ -80,6 +97,18 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
             
             // Фильтруем массив и убираем удаленный пост из ленты у других пользователей
             setLocalPosts(prevPosts => prevPosts.filter(post => post.id !== e.postId));
+        });
+
+        channel.listen('.post.published', (e: { post: any }) => {
+            if (e.post.is_update) {
+                // Если прилетел сигнал апдейта — меняем буквы в существующем посте
+                setLocalPosts(prevPosts => 
+                    prevPosts.map(p => p.id === e.post.id ? { ...p, body: e.post.body } : p)
+                );
+            } else {
+                // Если это новый пост — пушим его вверх, как и раньше
+                setLocalPosts(prevPosts => [e.post, ...prevPosts]);
+            }
         });
 
         // Очистка при уходе со страницы, чтобы не плодить утечки памяти в SPA-режиме
@@ -121,8 +150,46 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
     //         preserveScroll: true,
     //     });
     // };
+
+    // Вспомогательные функции
+    const startEditPost = (postItem: PostProps) => {
+        setEditingPost(postItem);
+        setData('body', postItem.body || ''); // Подставляем старый текст в главное поле ввода
+    };
+
+    const cancelEditPost = () => {
+        setEditingPost(null);
+        reset('body');
+    };
+
     const handleCreatePost = (e: React.SubmitEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (editingPost) {
+            if (!data.body.trim()) return;
+
+            const postId = editingPost.id;
+            const updatedBody = data.body;
+
+            // Оптимистично меняем текст поста на своем экране мгновенно
+            setLocalPosts(prevPosts => 
+                prevPosts.map(p => p.id === postId ? { ...p, body: updatedBody } : p)
+            );
+
+            // 2. ИСПОЛЬЗУЕМ МЕТОД put ИЗ ХУКА useForm (вместо router.post)
+            // Inertia сама под капотом упакует это в POST с маркером _method=PUT,
+            // правильно обработает AJAX и предотвратит ЛЮБЫЕ перезагрузки страниц!
+            put(`/news/${postId}`, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => {
+                    // Очищаем стейты строго ПОСЛЕ успешного ответа сервера
+                    setEditingPost(null);
+                    reset('body');
+                    console.log("PUT request successfully finished on News");
+                }
+            });
+            return;
+        }
         if (!data.body.trim()) return;
 
         post('/news', {
@@ -174,6 +241,12 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
             <div className="flex flex-col gap-4">                
                 {/* БЛОК ФОРМЫ: «Что у вас нового?» в стиле VK */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                    {editingPost && (
+                        <div className="flex justify-between items-center bg-blue-50 border border-blue-100 px-4 py-1.5 rounded-lg text-xs font-medium text-blue-700 mb-2 animate-fade-in">
+                            <span>✏️ Редактирование публикации: <span className="italic text-gray-500">"{editingPost.body}"</span></span>
+                            <button onClick={cancelEditPost} className="text-blue-400 hover:text-blue-700 font-bold px-1">✕</button>
+                        </div>
+                    )}
                     <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
                         <textarea
                             placeholder="Что у вас нового?"
@@ -272,13 +345,29 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
 
                             {/* Кнопка удаления (Появится в самом конце строки благодаря flex justify-between) */}
                             {post.author.id === current_user_id && (
-                                <button 
-                                    onClick={() => handleDeletePost(post.id)}
-                                    className="text-gray-400 hover:text-red-500 text-sm p-1.5 rounded-md hover:bg-gray-50 transition-colors shrink-0"
-                                    title="Удалить публикацию"
-                                >
-                                    ✕
-                                </button>
+                                <div className="flex gap-2 shrink-0">
+                                    <button 
+                                        onClick={() => handleDeletePost(post.id)}
+                                        className="text-gray-400 hover:text-red-500 text-sm p-1.5 rounded-md hover:bg-gray-50 transition-colors shrink-0"
+                                        title="Удалить публикацию"
+                                    >
+                                        🗑️
+                                    </button>
+                                    <button 
+                                        onClick={() => startEditPost(post)}
+                                        className="text-gray-400 hover:text-blue-600 text-sm p-1 rounded hover:bg-gray-50 transition-colors"
+                                        title="Редактировать публикацию"
+                                    >
+                                        ✏️
+                                    </button>
+                                    {/* <button 
+                                        onClick={() => handleDeletePost(post.id)}
+                                        className="text-gray-400 hover:text-red-500 text-sm p-1 rounded hover:bg-gray-50 transition-colors"
+                                        title="Удалить публикацию"
+                                    >
+                                        ✕
+                                    </button> */}
+                                </div>
                             )}
                         </div>
 

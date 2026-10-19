@@ -11,6 +11,7 @@ use Inertia\Inertia;
 use App\Events\MediaLiked;
 use App\Events\PostPublished;
 use App\Events\PostDeleted;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class NewsController extends Controller
@@ -30,22 +31,7 @@ class NewsController extends Controller
                     ->where('media_id', $media->id)
                     ->exists();
 
-                return [
-                    'id' => $media->id,
-                    'body' => $media->body,
-                    'filename' => $media->filename,
-                    'size' => $media->size,
-                    'type' => $media->type->name,
-                    'metadata' => $media->metadata,
-                    'likes_count' => $media->likes_count,
-                    'liked_by_me' => $likedByMe,
-                    'author' => [
-                        'id' => $media->user->id,
-                        'full_name' => $media->user->first_name . ' ' . $media->user->last_name,
-                        'avatar_url' => $media->user->profile?->avatar_url ? asset('storage/' . $media->user->profile->avatar_url) : null,
-                    ],
-                    'date' => $media->created_at->diffForHumans(),
-                ];
+                return $this->formatPost($media);
             });
 
         return Inertia::render('News/Index', [
@@ -167,22 +153,7 @@ class NewsController extends Controller
         $media->load(['user.profile', 'type']);
 
         // 3. Формируем чистую структуру данных для фронтенда
-        $formattedPost = [
-            'id' => $media->id,
-            'body' => $media->body,
-            'filename' => $media->filename,
-            'size' => $media->size,
-            'type' => $media->type->name,
-            'metadata' => $media->metadata,
-            'likes_count' => 0, // У нового поста всегда 0 лайков
-            'liked_by_me' => false,
-            'author' => [
-                'id' => $media->user->id,
-                'full_name' => $media->user->first_name . ' ' . $media->user->last_name,
-                'avatar_url' => $media->user->profile?->avatar_url ? asset('storage/' . $media->user->profile->avatar_url) : null,
-            ],
-            'date' => $media->created_at->diffForHumans(),
-        ];
+        $formattedPost = $this->formatPost($media);
 
         // 4. Стреляем событием в WebSocket-сервер Reverb для ВСЕХ ОСТАЛЬНЫХ пользователей на сайте
         broadcast(new PostPublished($formattedPost))->toOthers();
@@ -206,5 +177,67 @@ class NewsController extends Controller
         broadcast(new PostDeleted($postId))->toOthers();
 
         return redirect()->back();
+    }
+
+    public function update(Request $request, Media $media)
+    {
+        // 1. Безопасность: изменять текст поста может только его создатель
+        if ($media->user_id !== Auth::id()) {
+            abort(403, 'У вас нет прав на редактирование этого поста.');
+        }
+
+        // 2. Валидация
+        $request->validate([
+            'body' => ['required', 'string', 'max:5000'],
+        ]);
+
+        // 3. Обновляем текст поста в PostgreSQL
+        $media->update([
+            'body' => $request->body,
+        ]);
+
+        // 4. Жадная загрузка связей для сборки полноценного пакета
+        $media->load(['user.profile', 'type']);
+
+        // 5. СОБИРАЕМ КРИТИЧЕСКИ ВАЖНЫЙ ПОЛНОЦЕННЫЙ ПАКЕТ ДАННЫХ
+        // Он на 100% совпадает со структурой методов index() и store()!
+        $formattedPost = $this->formatPost($media, true);
+
+        Log::info("Сформирован полноценный пакет обновления для поста №{$media->id}. Ошибки undefined исключены.");
+
+        // 6. Стреляем полноценным пакетом в Reverb для остальных пользователей
+        broadcast(new PostPublished($formattedPost))->toOthers();
+
+        // 7. Возвращаем Inertia чистый ответ. Теперь пропсы обновятся полноценным массивом!
+        return redirect()->back();
+    }
+
+    /**
+     * Унифицированное форматирование структуры поста для фронтенда React и Inertia.
+     */
+    private function formatPost(Media $media, bool $isUpdate = false): array
+    {
+        $currentUserId = Auth::id();
+
+        return [
+            'id' => $media->id,
+            'body' => $media->body,
+            'filename' => $media->filename,
+            'size' => $media->size,
+            'type' => $media->type->name,
+            'metadata' => $media->metadata,
+            // Оптимизированный подсчет лайков через ленивую/жадную связь СУБД
+            'likes_count' => $media->likes()->count(), 
+            'liked_by_me' => $currentUserId ? $media->likes()->where('user_id', $currentUserId)->exists() : false,
+            'author' => [
+                'id' => $media->user->id,
+                'full_name' => $media->user->first_name . ' ' . $media->user->last_name,
+                'avatar_url' => $media->user->profile?->avatar_url 
+                    ? asset('storage/' . $media->user->profile->avatar_url) 
+                    : null,
+            ],
+            'date' => $media->created_at->diffForHumans(),
+            'is_update' => $isUpdate // Динамический маркер обновления для сокетов React
+        ];
     }
 }

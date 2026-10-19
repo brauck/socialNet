@@ -57,6 +57,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/news/{media}/like', [NewsController::class, 'toggleLike']);
     Route::post('/news', [NewsController::class, 'store']);
     Route::delete('/news/{media}', [NewsController::class, 'destroy'])->name('news.destroy');
+    Route::put('/news/{media}', [NewsController::class, 'update'])->name('news.update');
     // profile
     Route::get('/profile/edit', [ProfileController::class, 'edit']);
     Route::post('/profile/edit', [ProfileController::class, 'update']);    

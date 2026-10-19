@@ -335,7 +335,9 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                         🗑️
                                     </button>
                                     <span>
-                                        <button onClick={() => startEditMessage(msg)} className="text-gray-400 hover:text-blue-600 text-xs p-1 hover:bg-gray-100">
+                                        <button onClick={() => startEditMessage(msg)} className="text-gray-400 hover:text-blue-600 text-xs p-1 hover:bg-gray-100"
+                                        title="Редактировать сообщение"    
+                                        >
                                             ✏️
                                         </button>
                                     </span>
