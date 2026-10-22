@@ -13,7 +13,7 @@ class PostPublished implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     // Массив с полными данными нового поста, готовый для рендеринга в React
-    public $post;
+    public array $post;
 
     public function __construct(array $post)
     {

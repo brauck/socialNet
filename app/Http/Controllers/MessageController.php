@@ -134,7 +134,7 @@ class MessageController extends Controller
     }
 
     // Метод для обработки отправки НОВОГО сообщения
-    public function store(Request $request, $chatId)
+    public function store(Request $request, Chat $chat)
     {
         $request->validate([
             'body' => [$request->hasFile('chat_file') ? 'nullable' : 'required', 'string', 'max:5000'],
@@ -142,142 +142,106 @@ class MessageController extends Controller
         ]);
 
         $userId = Auth::id();
+        $chatId = $chat->id;
+        
+        // Переменная для хранения отформатированного сообщения под сокеты
+        $formattedMessage = null;
 
-        // 1. Сначала создаем базовое сообщение в PostgreSQL
-        $message = Message::create([
-            'chat_id' => $chatId,
-            'sender_id' => $userId,
-            'body' => $request->body ?? '',
-            'is_read' => false,
-        ]);
-
-        // 2. Если к сообщению прикреплен реальный файл — создаем для него запись в таблице media
-        if ($request->hasFile('chat_file')) {
-            $file = $request->file('chat_file');
-            $mime = $file->getMimeType();
-            $size = $file->getSize();
-            $metadata = null;
-
-            if (str_contains($mime, 'image')) {
-                $typeName = 'photo';
-                $folder = 'photos';
-                $imageSize = @getimagesize($file->getRealPath());
-                $metadata = ['width' => $imageSize ? $imageSize[0] : 1280, 'height' => $imageSize ? $imageSize[1] : 720];
-            } elseif (str_contains($mime, 'audio')) {
-                $typeName = 'audio';
-                $folder = 'audios';
-                $metadata = ['title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 'duration_seconds' => rand(150, 240)];
-            } elseif (str_contains($mime, 'video')) {
-                $typeName = 'video';
-                $folder = 'videos';
-                $metadata = ['resolution' => '1080p'];
-            } else {
-                $typeName = 'document';
-                $folder = 'documents';
-            }
-
-            $typeRecord = MediaType::where('name', $typeName)->first();
-            $filename = $file->store("uploads/{$folder}", 'public');
-
-            // Создаем чистую системную запись в таблице media
-            $media = Media::create([
-                'media_type_id' => $typeRecord->id,
-                'user_id' => $userId,
-                'body' => null, // у самого медиафайла в чате нет отдельного текста
-                'filename' => $filename,
-                'size' => $size,
-                'metadata' => $metadata,
+        // Оборачиваем всю работу с БД в транзакцию
+        // Передаем по ссылке &$formattedMessage, чтобы вытащить результат работы замыкания наружу
+        DB::transaction(function () use ($request, $chatId, $userId, &$formattedMessage) {
+            
+            // 1. Создаем базовое сообщение
+            $message = Message::create([
+                'chat_id' => $chatId,
+                'sender_id' => $userId,
+                'body' => $request->body ?? '',
+                'is_read' => false,
             ]);
 
-            // Магия Laravel: привязываем созданный медиафайл к нашему сообщению через таблицу attachments
-            $message->media()->attach($media->id);
+            // 2. Если есть файл — обрабатываем
+            if ($request->hasFile('chat_file')) {
+                $file = $request->file('chat_file');
+                $mime = $file->getMimeType();
+                $size = $file->getSize();
+                $metadata = null;
+
+                if (str_contains($mime, 'image')) {
+                    $typeName = 'photo';
+                    $folder = 'photos';
+                    $imageSize = @getimagesize($file->getRealPath());
+                    $metadata = ['width' => $imageSize ? $imageSize[0] : 1280, 'height' => $imageSize ? $imageSize[1] : 720];
+                } elseif (str_contains($mime, 'audio')) {
+                    $typeName = 'audio';
+                    $folder = 'audios';
+                    $metadata = ['title' => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 'duration_seconds' => rand(150, 240)];
+                } elseif (str_contains($mime, 'video')) {
+                    $typeName = 'video';
+                    $folder = 'videos';
+                    $metadata = ['resolution' => '1080p'];
+                } else {
+                    $typeName = 'document';
+                    $folder = 'documents';
+                }
+
+                $typeRecord = MediaType::where('name', $typeName)->first();
+                
+                // Физическое сохранение файла на диск. 
+                // Если транзакция упадет ДАЛЬШЕ (например на attach), этот файл останется на диске.
+                // Но в БД записей не будет, что гарантирует целостность данных.
+                $filename = $file->store("uploads/{$folder}", 'public');
+
+                $media = Media::create([
+                    'media_type_id' => $typeRecord->id,
+                    'user_id' => $userId,
+                    'body' => null,
+                    'filename' => $filename,
+                    'size' => $size,
+                    'metadata' => $metadata,
+                ]);
+
+                // Привязываем через полиморфную связь Many-to-Many
+                $message->media()->attach($media->id);
+            }
+
+            // 3. Жадная загрузка связей внутри транзакции
+            $message->load(['user.profile', 'media.type']);
+
+            // 4. Формируем структуру данных прямо здесь и пишем во внешнюю переменную
+            $formattedMessage = [
+                'id' => $message->id,
+                'chat_id' => $message->chat_id,
+                'body' => $message->body,
+                'is_read' => $message->is_read,
+                'attachments' => $message->media->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'filename' => $item->filename,
+                        'type' => $item->type->name,
+                        'metadata' => $item->metadata,
+                        'likes_count' => 0,
+                        'liked_by_me' => false,
+                    ];
+                })->toArray(),
+                'sender' => [
+                    'id' => $message->user->id,
+                    'full_name' => $message->user->first_name . ' ' . $message->user->last_name,
+                    'avatar_url' => $message->user->profile?->avatar_url ? asset('storage/' . $message->user->profile->avatar_url) : null,
+                ],
+                'created_at' => $message->created_at->toIso8601String(),
+            ];
+        }); // Здесь автоматически происходит COMMIT в PostgreSQL!
+
+        // 5. ВЕЩАНИЕ СОБЫТИЯ (Строго ПОСЛЕ коммита транзакции!)
+        // Если бы мы вещали изнутри транзакции, сокет Reverb мог бы доставить сообщение на фронтенд
+        // до того, как PostgreSQL успеет зафиксировать коммит. Юзер бы поймал ошибку 404 при попытке его прочесть.
+        if ($formattedMessage) {
+            broadcast(new MessageSent($formattedMessage))->toOthers();
         }
-
-        // 3. Жадная загрузка сообщения вместе с автором и прикрепленными медиафайлами
-        $message->load(['user.profile', 'media.type']);
-
-        // 4. Формируем структуру данных для Reverb сокетов
-        $formattedMessage = [
-            'id' => $message->id,
-            'chat_id' => $message->chat_id,
-            'body' => $message->body,
-            'is_read' => $message->is_read,
-            'attachments' => $message->media->map(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'filename' => $item->filename,
-                    'type' => $item->type->name, // Настоящий тип из БД (photo, audio, video)
-                    'metadata' => $item->metadata,
-                    'likes_count' => 0,
-                    'liked_by_me' => false,
-                ];
-            })->toArray(),
-            'sender' => [
-                'id' => $message->user->id,
-                'full_name' => $message->user->first_name . ' ' . $message->user->last_name,
-                'avatar_url' => $message->user->profile?->avatar_url ? asset('storage/' . $message->user->profile->avatar_url) : null,
-            ],
-            'created_at' => $message->created_at->toIso8601String(),
-        ];
-
-        broadcast(new MessageSent($formattedMessage))->toOthers();
 
         return redirect()->back();
     }
 
-    // public function destroy(Message $message)
-    // {
-    //     if ($message->sender_id !== Auth::id()) {
-    //         abort(403, 'У вас нет прав на удаление этого сообщения.');
-    //     }
-
-    //     $chatId = $message->chat_id;
-    //     $messageId = $message->id;
-
-    //     // 1. Собираем медиафайлы до удаления
-    //     $attachedMedia = $message->media()->get();
-
-    //     Log::info("=== НАЧАЛО УДАЛЕНИЯ СООБЩЕНИЯ №{$messageId} ===");
-    //     Log::info("Найдено прикрепленных файлов: " . $attachedMedia->count());
-
-    //     // 2. ХАК ДЛЯ ОЧИСТКИ: Принудительно разрываем полиморфную связь Многие-ко-Многим!
-    //     // Это мгновенно удалит строки из таблицы attachments ДЛЯ ЭТОГО сообщения
-    //     $message->media()->detach();
-    //     Log::info("Связи в attachments для сообщения №{$messageId} успешно разорваны (detached).");
-
-    //     // 3. Теперь спокойно удаляем само сообщение из PostgreSQL
-    //     $message->delete();
-
-    //     // 4. Проверяем каждый файл на сиротство
-    //     foreach ($attachedMedia as $mediaItem) {
-    //         // Проверяем, использует ли этот файл КТО-НИБУДЬ ЕЩЕ (в других сообщениях)
-    //         $isStillUsed = DB::table('attachments')
-    //             ->where('media_id', $mediaItem->id)
-    //             ->exists();
-
-    //         Log::info("Проверка файла №{$mediaItem->id} ({$mediaItem->filename}): Используется кем-то еще? " . ($isStillUsed ? 'ДА' : 'НЕТ'));
-
-    //         if (!$isStillUsed) {
-    //             // а) Удаляем физический захешированный файл с диска Ubuntu
-    //             if (Storage::disk('public')->exists($mediaItem->filename)) {
-    //                 Storage::disk('public')->delete($mediaItem->filename);
-    //                 Log::info("Бинарник файла физически СТЕРТ с жесткого диска.");
-    //             } else {
-    //                 Log::warning("Внимание: Запись в БД есть, но файла на диске не найдено: " . $mediaItem->filename);
-    //             }
-
-    //             // б) Удаляем саму запись из media (PostgreSQL каскадом очистит лайки!)
-    //             $mediaItem->delete();
-    //             Log::info("Запись файла №{$mediaItem->id} полностью удалена из таблицы media.");
-    //         }
-    //     }
-
-    //     Log::info("=== УДАЛЕНИЕ СООБЩЕНИЯ №{$messageId} ЗАВЕРШЕНО ===");
-
-    //     broadcast(new MessageDeleted($chatId, $messageId))->toOthers();
-
-    //     return redirect()->back();
-    // }
 
     public function destroy(Message $message)
     {

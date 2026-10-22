@@ -12,6 +12,8 @@ use App\Events\MediaLiked;
 use App\Events\PostPublished;
 use App\Events\PostDeleted;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class NewsController extends Controller
@@ -45,24 +47,24 @@ class NewsController extends Controller
     {
         $userId = Auth::id();
         
-        // Наша рабочая логика переключения лайка в базе данных
-        $like = Like::where('user_id', $userId)->where('media_id', $media->id)->first();
+        // Оборачиваем работу с БД в транзакцию
+        DB::transaction(function () use ($userId, $media) {
+            $like = Like::where('user_id', $userId)->where('media_id', $media->id)->first();
 
-        if ($like) {
-            $like->delete();
-        } else {
-            Like::create([
-                'user_id' => $userId,
-                'media_id' => $media->id,
-            ]);
-        }
+            if ($like) {
+                $like->delete();
+            } else {
+                Like::create([
+                    'user_id' => $userId,
+                    'media_id' => $media->id,
+                ]);
+            }
+        });
 
-        // 1. Считаем свежее количество лайков под постом из PostgreSQL
+        // 1. Считаем свежее количество лайков под постом из PostgreSQL (вне транзакции)
         $likesCount = $media->likes()->count();
 
         // 2. Отправляем событие в WebSocket-сервер Reverb
-        // Метод ->toOthers() заставит Reverb отправить сигнал ВСЕМ, кроме нас самих,
-        // так как у нас на вкладке уже мгновенно отработал Оптимистичный UI!
         broadcast(new MediaLiked($media->id, $likesCount))->toOthers();
 
         return redirect()->back();
@@ -135,49 +137,80 @@ class NewsController extends Controller
             // Сохраняем файл на диск в Docker по относительному пути (storage/app/public/uploads/...)
             $filename = $file->store("uploads/{$folder}", 'public');
         } else {
-            // Если это чисто текстовый пост — привяжем его к типу 'document' для совместимости с лентой
-            $mediaTypeId = MediaType::where('name', 'document')->first()->id;
+                // Если это чисто текстовый пост — привяжем его к типу 'document' для совместимости с лентой
+                $mediaTypeId = MediaType::where('name', 'document')->first()->id;
         }
 
-        // 1. Создаем запись в базе данных PostgreSQL и сохраняем объект в переменную $media
-        $media = Media::create([
-            'media_type_id' => $mediaTypeId,
-            'user_id' => $userId,
-            'body' => $request->body,
-            'filename' => $filename,
-            'size' => $size,
-            'metadata' => $metadata,
-        ]);
+                // Переменная для выноса готового пакета из замыкания
+        $formattedPost = null;
 
-        // 2. Жадная загрузка связей для только что созданного поста (нужно для аватара и автора)
-        $media->load(['user.profile', 'type']);
+        try {
+            // Запускаем транзакцию на запись в БД
+            DB::transaction(function () use ($mediaTypeId, $userId, $request, $filename, $size, $metadata, &$formattedPost) {
+                $media = Media::create([
+                    'media_type_id' => $mediaTypeId,
+                    'user_id' => $userId,
+                    'body' => $request->body,
+                    'filename' => $filename,
+                    'size' => $size,
+                    'metadata' => $metadata,
+                ]);
 
-        // 3. Формируем чистую структуру данных для фронтенда
-        $formattedPost = $this->formatPost($media);
+                $media->load(['user.profile', 'type']);
+                $formattedPost = $this->formatPost($media);
+            });
 
-        // 4. Стреляем событием в WebSocket-сервер Reverb для ВСЕХ ОСТАЛЬНЫХ пользователей на сайте
-        broadcast(new PostPublished($formattedPost))->toOthers();
+            // Стреляем событием в сокеты строго после успешного коммита
+            if ($formattedPost) {
+                broadcast(new PostPublished($formattedPost))->toOthers();
+            }
+
+        } catch (\Throwable $e) {
+            // ОТКАТ ФАЙЛА ПРИ НЕУДАЧЕ: Если база данных дала сбой, 
+            // стираем загруженный файл с диска, чтобы не копить мусор
+            if ($request->hasFile('media_file') && Storage::disk('public')->exists($filename)) {
+                Storage::disk('public')->delete($filename);
+            }
+
+            // Пробрасываем ошибку дальше, чтобы Laravel корректно обработал её или вывел в лог
+            throw $e;
+        }
+
 
         return redirect()->back();
     }
 
-    public function destroy(Media $media)
-    {
-        // Безопасность: проверяем, является ли текущий пользователь автором поста
-        if ($media->user_id !== Auth::id()) {
-            abort(403, 'У вас нет прав на удаление этого поста.');
+        public function destroy(Media $media)
+        {
+            // Безопасность: проверяем, является ли текущий пользователь автором поста
+            if ($media->user_id !== Auth::id()) {
+                abort(403, 'У вас нет прав на удаление этого поста.');
+            }
+
+            $postId = $media->id;
+            // Запоминаем имя файла до удаления записи из базы данных
+            $fileToDelete = $media->filename;
+
+            // Удаляем запись внутри транзакции. 
+            // Если тут будет сбой (например, зависнет PostgreSQL), метод выбросит ошибку и прервется.
+            DB::transaction(function () use ($media) {
+                $media->delete();
+            });
+
+            // ФИЗИЧЕСКОЕ УДАЛЕНИЕ ФАЙЛА: Этот код выполнится только если транзакция выше прошла успешно!
+            // Игнорируем заглушку для текстовых постов, чтобы не удалить её саму.
+            if ($fileToDelete && $fileToDelete !== 'posts/text_only.dat') {
+                if (Storage::disk('public')->exists($fileToDelete)) {
+                    Storage::disk('public')->delete($fileToDelete);
+                }
+            }
+
+            // Транслируем событие удаления всем остальным пользователям
+            broadcast(new PostDeleted($postId))->toOthers();
+
+            return redirect()->back();
         }
 
-        $postId = $media->id;
-
-        // Удаляем запись из PostgreSQL
-        $media->delete();
-
-        // Транслируем событие удаления всем ОСТАЛЬНЫМ пользователям в реальном времени
-        broadcast(new PostDeleted($postId))->toOthers();
-
-        return redirect()->back();
-    }
 
     public function update(Request $request, Media $media)
     {
