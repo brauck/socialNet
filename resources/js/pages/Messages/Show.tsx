@@ -238,7 +238,10 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
 
     return (
         <MainLayout>
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[550px]">
+            {/* <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[550px]"> */}
+            {/* 100dvh — это вся высота экрана, вычитаем 140px на шапку сайта и отступы */}
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[calc(100dvh-140px)] min-h-[400px]">
+
                 {/* 1. Шапка чата с кнопкой Назад */}
                 <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 bg-gray-50 shrink-0">
                     <Link href="/messages" className="text-blue-600 hover:underline text-sm font-medium">

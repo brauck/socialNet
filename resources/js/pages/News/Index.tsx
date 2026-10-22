@@ -86,7 +86,7 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                         return prevPosts; // Если пост с таким ID уже есть, игнорируем пакет сокета
                     }
                     // Если поста еще нет — безопасно пушим его на самый верх ленты
-                    return [e.post, ...prevPosts];
+                    return [e.post, ...prevPosts, ];
                 });
             }
         });
@@ -97,18 +97,6 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
             
             // Фильтруем массив и убираем удаленный пост из ленты у других пользователей
             setLocalPosts(prevPosts => prevPosts.filter(post => post.id !== e.postId));
-        });
-
-        channel.listen('.post.published', (e: { post: any }) => {
-            if (e.post.is_update) {
-                // Если прилетел сигнал апдейта — меняем буквы в существующем посте
-                setLocalPosts(prevPosts => 
-                    prevPosts.map(p => p.id === e.post.id ? { ...p, body: e.post.body } : p)
-                );
-            } else {
-                // Если это новый пост — пушим его вверх, как и раньше
-                setLocalPosts(prevPosts => [e.post, ...prevPosts]);
-            }
         });
 
         // Очистка при уходе со страницы, чтобы не плодить утечки памяти в SPA-режиме
@@ -190,6 +178,8 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
             });
             return;
         }
+        e.preventDefault();
+        
         if (!data.body.trim()) return;
 
         post('/news', {
@@ -238,7 +228,9 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
     return (
         <MainLayout>
             <Head title="Новости" /> 
-            <div className="flex flex-col gap-4">                
+            {/* <div className="flex flex-col gap-4"> */}
+            {/* Общий фиксированный контейнер для формы и ленты */}
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[calc(100dvh-140px)] min-h-[400px] overflow-hidden">
                 {/* БЛОК ФОРМЫ: «Что у вас нового?» в стиле VK */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
                     {editingPost && (
@@ -320,94 +312,96 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                     </form>
                 </div>
 
-                {/* ВЫВОД ЛЕНТЫ ПОСТОВ */}
-                {localPosts.map(post => (
-                    <div key={post.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm flex flex-col gap-4">
-                        
-                        {/* 1. СТРОКА ПЕРВАЯ: Аватар и имя — в начале, кнопка удаления — строго в самом конце */}
-                        <div className="flex justify-between items-center w-full">
-                            {/* Блок автора (Аватар + Имя + Дата) */}
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-blue-50 border border-gray-100 rounded-full overflow-hidden flex items-center justify-center text-lg shrink-0 shadow-inner">
-                                    {post.author.avatar_url ? (
-                                        <img src={post.author.avatar_url} alt="Аватар" className="w-full h-full object-cover" />
-                                    ) : (
-                                        '💁‍♂️'
-                                    )}
-                                </div>
-                                <div>
-                                    <div className="text-sm font-semibold text-blue-800 hover:underline cursor-pointer">
-                                        {post.author.full_name}
+                <div className="flex-grow p-4 overflow-y-auto flex flex-col gap-4 bg-gray-50/30">
+                    {/* ВЫВОД ЛЕНТЫ ПОСТОВ */}
+                    {localPosts.map(post => (
+                        <div key={post.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm flex flex-col gap-4">
+                            
+                            {/* 1. СТРОКА ПЕРВАЯ: Аватар и имя — в начале, кнопка удаления — строго в самом конце */}
+                            <div className="flex justify-between items-center w-full">
+                                {/* Блок автора (Аватар + Имя + Дата) */}
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-blue-50 border border-gray-100 rounded-full overflow-hidden flex items-center justify-center text-lg shrink-0 shadow-inner">
+                                        {post.author.avatar_url ? (
+                                            <img src={post.author.avatar_url} alt="Аватар" className="w-full h-full object-cover" />
+                                        ) : (
+                                            '💁‍♂️'
+                                        )}
                                     </div>
-                                    <div className="text-xs text-gray-400 mt-0.5">{post.date}</div>
+                                    <div>
+                                        <div className="text-sm font-semibold text-blue-800 hover:underline cursor-pointer">
+                                            {post.author.full_name}
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-0.5">{post.date}</div>
+                                    </div>
                                 </div>
+
+                                {/* Кнопка удаления (Появится в самом конце строки благодаря flex justify-between) */}
+                                {post.author.id === current_user_id && (
+                                    <div className="flex gap-2 shrink-0">
+                                        <button 
+                                            onClick={() => handleDeletePost(post.id)}
+                                            className="text-gray-400 hover:text-red-500 text-sm p-1.5 rounded-md hover:bg-gray-50 transition-colors shrink-0"
+                                            title="Удалить публикацию"
+                                        >
+                                            🗑️
+                                        </button>
+                                        <button 
+                                            onClick={() => startEditPost(post)}
+                                            className="text-gray-400 hover:text-blue-600 text-sm p-1 rounded hover:bg-gray-50 transition-colors"
+                                            title="Редактировать публикацию"
+                                        >
+                                            ✏️
+                                        </button>
+                                        {/* <button 
+                                            onClick={() => handleDeletePost(post.id)}
+                                            className="text-gray-400 hover:text-red-500 text-sm p-1 rounded hover:bg-gray-50 transition-colors"
+                                            title="Удалить публикацию"
+                                        >
+                                            ✕
+                                        </button> */}
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Кнопка удаления (Появится в самом конце строки благодаря flex justify-between) */}
-                            {post.author.id === current_user_id && (
-                                <div className="flex gap-2 shrink-0">
-                                    <button 
-                                        onClick={() => handleDeletePost(post.id)}
-                                        className="text-gray-400 hover:text-red-500 text-sm p-1.5 rounded-md hover:bg-gray-50 transition-colors shrink-0"
-                                        title="Удалить публикацию"
-                                    >
-                                        🗑️
-                                    </button>
-                                    <button 
-                                        onClick={() => startEditPost(post)}
-                                        className="text-gray-400 hover:text-blue-600 text-sm p-1 rounded hover:bg-gray-50 transition-colors"
-                                        title="Редактировать публикацию"
-                                    >
-                                        ✏️
-                                    </button>
-                                    {/* <button 
-                                        onClick={() => handleDeletePost(post.id)}
-                                        className="text-gray-400 hover:text-red-500 text-sm p-1 rounded hover:bg-gray-50 transition-colors"
-                                        title="Удалить публикацию"
-                                    >
-                                        ✕
-                                    </button> */}
+                            {/* Текст поста (если есть) */}
+                            {post.body && <p className="text-sm text-gray-900 leading-relaxed">{post.body}</p>}
+
+                            {/* 2. СТРОКА ВТОРАЯ: Картинка отображается ПОЛНОСТЬЮ, без обрезания и без растягивания на всю ширину */}
+                            {/* max-h-[500px] защищает ленту от слишком длинных картинок, а object-contain сохраняет пропорции */}
+                            {post.type === 'photo' && post.filename && (
+                                <div className="w-full bg-gray-50 border border-gray-100 rounded-lg flex items-center justify-center overflow-hidden p-2">
+                                    <img 
+                                        src={`/storage/${post.filename}`} 
+                                        alt="Медиаконтент" 
+                                        className="max-w-full max-h-[500px] object-contain rounded-md" 
+                                    />
                                 </div>
                             )}
-                        </div>
 
-                        {/* Текст поста (если есть) */}
-                        {post.body && <p className="text-sm text-gray-900 leading-relaxed">{post.body}</p>}
+                            {/* Отображение других типов файлов (Аудио, Видео, Документы — оставляем без изменений) */}
+                            {post.type !== 'photo' && post.type !== 'document' && (
+                                <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 text-sm">
+                                    {/* Твой существующий код для аудио/видео */}
+                                    {post.type === 'audio' && <div>🎵 {post.metadata?.artist} — {post.metadata?.title}</div>}
+                                    {post.type === 'video' && <div>🎥 Видеозапись ({post.metadata?.resolution})</div>}
+                                </div>
+                            )}
 
-                        {/* 2. СТРОКА ВТОРАЯ: Картинка отображается ПОЛНОСТЬЮ, без обрезания и без растягивания на всю ширину */}
-                        {/* max-h-[500px] защищает ленту от слишком длинных картинок, а object-contain сохраняет пропорции */}
-                        {post.type === 'photo' && post.filename && (
-                            <div className="w-full bg-gray-50 border border-gray-100 rounded-lg flex items-center justify-center overflow-hidden p-2">
-                                <img 
-                                    src={`/storage/${post.filename}`} 
-                                    alt="Медиаконтент" 
-                                    className="max-w-full max-h-[500px] object-contain rounded-md" 
-                                />
+                            {/* 3. СТРОКА ТРЕТЬЯ: Лайк в самом низу карточки */}
+                            <div className="border-t border-gray-100 pt-3 flex items-center">
+                                <button 
+                                    onClick={() => handleLike(post.id)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${post.liked_by_me ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                >
+                                    <span className="text-sm">{post.liked_by_me ? '❤️' : '🤍'}</span>
+                                    <span>{post.likes_count}</span>
+                                </button>
                             </div>
-                        )}
 
-                        {/* Отображение других типов файлов (Аудио, Видео, Документы — оставляем без изменений) */}
-                        {post.type !== 'photo' && post.type !== 'document' && (
-                            <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 text-sm">
-                                {/* Твой существующий код для аудио/видео */}
-                                {post.type === 'audio' && <div>🎵 {post.metadata?.artist} — {post.metadata?.title}</div>}
-                                {post.type === 'video' && <div>🎥 Видеозапись ({post.metadata?.resolution})</div>}
-                            </div>
-                        )}
-
-                        {/* 3. СТРОКА ТРЕТЬЯ: Лайк в самом низу карточки */}
-                        <div className="border-t border-gray-100 pt-3 flex items-center">
-                            <button 
-                                onClick={() => handleLike(post.id)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${post.liked_by_me ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                            >
-                                <span className="text-sm">{post.liked_by_me ? '❤️' : '🤍'}</span>
-                                <span>{post.likes_count}</span>
-                            </button>
                         </div>
-
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
         </MainLayout>
     );
