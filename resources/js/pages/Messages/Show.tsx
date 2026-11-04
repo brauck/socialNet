@@ -37,6 +37,7 @@ interface ShowProps {
 
 const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
     // 1. ИНИЦИАЛИЗИРУЕМ ЛОКАЛЬНОЕ СОСТОЯНИЕ ДЛЯ СООБЩЕНИЙ
+    const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
     const [localMessages, setLocalMessages] = useState<MessageProps[]>(messages);
     const [editingMessage, setEditingMessage] = useState<MessageProps | null>(null);
     const [fileError, setFileError] = useState<string | null>(null);
@@ -53,15 +54,53 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
 
     // Реф для автоматического скролла вниз при открытии чата или новом сообщении
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
     // Теперь автоскролл следит за обновлением локального массива сообщений сокетов!
+    // useEffect(() => {
+    //     scrollToBottom();
+    // }, [localMessages]);
     useEffect(() => {
-        scrollToBottom();
-    }, [localMessages]);
+        if (localMessages.length === 0) return;
+
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        // ЕСЛИ ЭТО ПЕРВАЯ ЗАГРУЗКА ЧАТА:
+        // Железно мотаем вниз без лишних проверок автора и позиции скролла
+        if (isInitialLoad) {
+            scrollToBottom();
+            setIsInitialLoad(false); // Выключаем режим первой загрузки навсегда
+            return;
+        }
+        // Достаем последнее сообщение из массива
+        const lastMessage = localMessages[localMessages.length - 1];
+
+        // Проверяем: это Я отправил сообщение?
+        // Обрати внимание: для оптимистичного UI у нас id = Date.now(), а sender_id равен current_user_id
+        const isMyMessage = lastMessage.sender_id === current_user_id;
+
+        if (isMyMessage) {
+            // Если сообщение моё — скроллим вниз железно и плавно
+            scrollToBottom();
+        } else {
+            // Если сообщение прилетело от друга по сокету:
+            // Считаем, находится ли пользователь внизу экрана (с погрешностью в 150 пикселей)
+            const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+            
+            if (isAtBottom) {
+                scrollToBottom();
+            } else {
+                console.log('Пользователь читает историю чата наверху, не срываем скролл.');
+                // Тут в будущем можно поставить стейт для кнопки "У вас новое сообщение ↓"
+            }
+        }
+    }, [localMessages, current_user_id]);
+
 
     // 2. ПОДКЛЮЧАЕМ ПРИВАТНЫЙ WebSocket-СЛУШАТЕЛЬ LARAVEL ECHO
     useEffect(() => {
@@ -106,6 +145,9 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                 prevMessages.map(msg => msg.id === e.messageId ? { ...msg, body: e.newBody } : msg)
             );
         });
+
+        // При изменении ID чата взводим флаг первой загрузки, чтобы новый чат тоже открылся внизу
+        setIsInitialLoad(true);
 
         // Отписываемся от приватного канала при уходе из чата (SPA-безопасность)
         return () => {
@@ -252,7 +294,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                 </div>
 
                 {/* 2. Область сообщений (Читаем из localMessages вместо пропсов) */}
-                <div className="flex-grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
+                <div ref={scrollContainerRef} className="flex-grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
                     {/* НАХОДИМ ЦИКЛ ВЫВОДА СООБЩЕНИЙ ВНУТРИ ОБЛАСТИ ИСТОРИИ ПЕРЕПИСКИ */}
                     {localMessages.map(msg => (
                         <div 

@@ -183,6 +183,13 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
         if (!data.body.trim()) return;
 
         post('/news', {
+            //onBefore: срабатывает МГНОВЕННО перед отправкой запроса на сервер
+            onBefore: () => {
+                // Мы не можем вызвать reset() прямо здесь, потому что Inertia сотрет 
+                // данные формы до того, как они упакуются в HTTP-пакет. 
+                // Поэтому очистку формы мы оставляем в onSuccess, но визуально 
+                // мы покажем пользователю красивый индикатор блокировки (см. шаг ниже).
+            },
             onSuccess: () => {
                 reset('body');
                 setData('media_file', null); // Чистим файл в стейте вручную
@@ -192,6 +199,7 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                 if (fileInput) fileInput.value = '';
             },
             preserveScroll: true,
+            preserveState: true,
         });
     };
 
@@ -215,6 +223,10 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
     };
 
     const handleDeletePost = (postId: number) => {
+        // Подтверждение удаления
+        const isConfirmed = window.confirm('Вы уверены, что хотите удалить этот пост? Это действие нельзя отменить.');
+        if (!isConfirmed) return;
+
         // 1. ОПТИМИСТИЧНОЕ ОБНОВЛЕНИЕ: Стираем пост с экрана у себя дома мгновенно
         setLocalPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
 
@@ -245,7 +257,10 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                             value={data.body}
                             onChange={e => setData('body', e.target.value)}                         
                             rows={data.body ? 3 : 1}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all resize-none text-gray-900 placeholder-gray-400"
+                            // className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all resize-none text-gray-900 placeholder-gray-400"
+                            className={`w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all resize-none text-gray-900 placeholder-gray-400 ${
+                                processing ? 'opacity-60 cursor-not-allowed bg-gray-100' : ''
+                            }`}
                             disabled={processing}
                             required
                         />
@@ -293,12 +308,26 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                                     />
                                 </div>
 
-                                <button
+                                {/* <button
                                     type="submit"
                                     disabled={processing || !data.body.trim() || !!fileError}
                                     className="bg-blue-600 text-white px-5 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
                                 >
                                     {processing ? 'Публикация...' : 'Опубликовать'}
+                                </button> */}
+                                <button
+                                    type="submit"
+                                    disabled={processing || !data.body.trim() || !!fileError}
+                                    className="bg-blue-600 text-white px-5 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+                                >
+                                    {processing ? (
+                                        <>
+                                            <span className="animate-spin mr-1">⏳</span>
+                                            <span>Публикация...</span>
+                                        </>
+                                    ) : (
+                                        'Опубликовать'
+                                    )}
                                 </button>
                             </div>                            
                         )}
