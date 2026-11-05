@@ -68,23 +68,74 @@ class MessageController extends Controller
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
+        //sleep(2);
+
         // Безопасность: проверяем, состоит ли текущий юзер в этом чате
         if (!$chat->members()->where('user_id', $user->id)->exists()) {
             abort(403, 'У вас нет доступа к этому чату.');
         }
 
-        // 1. Помечаем все входящие сообщения в этом чате как прочитанные
-        Message::where('chat_id', $chat->id)
-            ->where('sender_id', '<>', $user->id)
-            ->where('is_read', false)
-            ->update(['is_read' => true]);
+        // // 1. Помечаем все входящие сообщения в этом чате как прочитанные
+        // Message::where('chat_id', $chat->id)
+        //     ->where('sender_id', '<>', $user->id)
+        //     ->where('is_read', false)
+        //     ->update(['is_read' => true]);
 
-        // 2. Получаем историю сообщений (вложенная загрузка: сообщение -> автор -> профиль)
-        $messages = $chat->messages()
-            ->with(['user.profile']) // Жорстко подгружаем связи
-            ->oldest() // Сортируем от старых к новым
-            ->get()
-            ->map(function ($message) {
+        // // 2. Получаем историю сообщений (вложенная загрузка: сообщение -> автор -> профиль)
+        // $messages = $chat->messages()
+        //     ->with(['user.profile']) // Жорстко подгружаем связи
+        //     ->oldest() // Сортируем от старых к новым
+        //     ->get()
+        //     ->map(function ($message) {
+        //         return [
+        //             'id' => $message->id,
+        //             'body' => $message->body,
+        //             'filename' => $message->filename,
+        //             'file_type' => $message->file_type,
+        //             'sender_id' => $message->sender_id,
+        //             'sender_name' => $message->user->first_name . ' ' . $message->user->last_name,
+                    
+        //             // КРИТИЧЕСКИ ВАЖНО: Добавляем точное поле, которое мы прописали в Show.tsx!
+        //             'sender_avatar' => $message->user->profile?->avatar_url 
+        //                 ? asset('storage/' . $message->user->profile->avatar_url) 
+        //                 : null,
+                        
+        //             'is_me' => $message->sender_id === Auth::id(),
+        //             'date' => $message->created_at->diffForHumans(),
+
+        //             // Добавляем массив attachments для фронтенда Show.tsx
+        //             'attachments' => $message->media->map(function ($item) {
+        //                 return [
+        //                     'id' => $item->id,
+        //                     'filename' => $item->filename,
+        //                     'type' => $item->type->name, //photo, audio, video, document
+        //                     'metadata' => $item->metadata,
+        //                     'likes_count' => $item->likes()->count(), // Подключаем лайки на будущее!
+        //                     'liked_by_me' => $item->likes()->where('user_id', Auth::id())->exists(),
+        //                 ];
+        //             })->toArray(),
+        //         ];
+        //     });
+
+        // Для отслеживания непрочитанных сообщений
+        // Инициализируем переменную для сообщений
+        $messages = [];
+
+        DB::transaction(function () use ($chat, $user, &$messages) {
+            // 1. СНАЧАЛА получаем историю сообщений (с оригинальными статусами is_read из базы)
+            $messagesCollection = $chat->messages()
+                ->with(['user.profile', 'media.type'])
+                ->oldest()
+                ->get();
+
+            // 2. И только ПОСЛЕ этого помечаем их в PostgreSQL как прочитанные
+            Message::where('chat_id', $chat->id)
+                ->where('sender_id', '<>', $user->id)
+                ->where('is_read', false)
+                ->update(['is_read' => true]);
+
+            // 3. Формируем массив для фронтенда
+            $messages = $messagesCollection->map(function ($message) {
                 return [
                     'id' => $message->id,
                     'body' => $message->body,
@@ -92,28 +143,22 @@ class MessageController extends Controller
                     'file_type' => $message->file_type,
                     'sender_id' => $message->sender_id,
                     'sender_name' => $message->user->first_name . ' ' . $message->user->last_name,
-                    
-                    // КРИТИЧЕСКИ ВАЖНО: Добавляем точное поле, которое мы прописали в Show.tsx!
-                    'sender_avatar' => $message->user->profile?->avatar_url 
-                        ? asset('storage/' . $message->user->profile->avatar_url) 
-                        : null,
-                        
+                    'sender_avatar' => $message->user->profile?->avatar_url ? asset('storage/' . $message->user->profile->avatar_url) : null,
                     'is_me' => $message->sender_id === Auth::id(),
                     'date' => $message->created_at->diffForHumans(),
-
-                    // Добавляем массив attachments для фронтенда Show.tsx
+                    'is_read' => (bool)$message->is_read, // КРИТИЧЕСКИ ВАЖНО: Передаем оригинальный статус на фронтенд!
                     'attachments' => $message->media->map(function ($item) {
                         return [
                             'id' => $item->id,
                             'filename' => $item->filename,
-                            'type' => $item->type->name, //photo, audio, video, document
+                            'type' => $item->type->name,
                             'metadata' => $item->metadata,
-                            'likes_count' => $item->likes()->count(), // Подключаем лайки на будущее!
-                            'liked_by_me' => $item->likes()->where('user_id', Auth::id())->exists(),
                         ];
                     })->toArray(),
                 ];
             });
+        });
+
 
         // 3. Формируем заголовок чата (имя собеседника или название группы)
         $chatTitle = $chat->title;

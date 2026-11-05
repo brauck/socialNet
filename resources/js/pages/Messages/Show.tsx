@@ -20,6 +20,7 @@ interface MessageProps {
     sender_avatar: string | null;
     is_me: boolean;
     date: string;
+    is_read?: boolean;
     attachments: AttachmentProps[]; // Заменили одиночные поля на массив вложений!
 }
 
@@ -70,13 +71,38 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
         const container = scrollContainerRef.current;
         if (!container) return;
 
-        // ЕСЛИ ЭТО ПЕРВАЯ ЗАГРУЗКА ЧАТА:
-        // Железно мотаем вниз без лишних проверок автора и позиции скролла
+        // // ЕСЛИ ЭТО ПЕРВАЯ ЗАГРУЗКА ЧАТА:
+        // // Железно мотаем вниз без лишних проверок автора и позиции скролла
+        // if (isInitialLoad) {
+        //     scrollToBottom();
+        //     setIsInitialLoad(false); // Выключаем режим первой загрузки навсегда
+        //     return;
+        // }
+
+                // ЕСЛИ ЭТО ПЕРВАЯ ЗАГРУЗКА ЧАТА:
         if (isInitialLoad) {
+            // Ищем первое чужое непрочитанное сообщение в истории
+            const firstUnreadMessage = localMessages.find(
+                msg => !msg.is_me && msg.is_read === false
+            );
+
+            if (firstUnreadMessage) {
+                // Если такое сообщение нашли — ищем его элемент в DOM
+                const unreadElement = document.getElementById(`message-${firstUnreadMessage.id}`);
+                if (unreadElement) {
+                    // Плавно скроллим контейнер так, чтобы это сообщение встало по центру или сверху экрана
+                    unreadElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+                    setIsInitialLoad(false);
+                    return;
+                }
+            }
+
+            // Если непрочитанных сообщений нет — просто мотаем в самый низ чата как обычно
             scrollToBottom();
-            setIsInitialLoad(false); // Выключаем режим первой загрузки навсегда
+            setIsInitialLoad(false);
             return;
         }
+
         // Достаем последнее сообщение из массива
         const lastMessage = localMessages[localMessages.length - 1];
 
@@ -107,31 +133,51 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
         // Подключаемся строго к приватному каналу этого конкретного чата
         const channel = window.Echo.private(`chat.${chat.id}`);
 
-        channel.listen('.message.sent', (e: { messageData: any }) => {
+            channel.listen('.message.sent', (e: { messageData: any }) => {
             console.log('По закрытому каналу прилетело новое сообщение:', e.messageData);
             
-            // Защита от дублирования: проверяем, нет ли уже такого сообщения в нашем массиве
             setLocalMessages(prevMessages => {
+                // Если сообщение с таким ID из базы данных уже есть в чате — ничего не делаем
                 if (prevMessages.some(msg => msg.id === e.messageData.id)) {
                     return prevMessages;
                 }
 
-                // Мапим структуру бэкенда под интерфейс MessageProps твоего экрана
-               const incomingMessage: MessageProps = {
+                const senderId = Number(e.messageData.sender.id);
+                const myId = Number(current_user_id);
+                const isItMe = senderId === myId;
+
+                // Мапим структуру бэкенда под интерфейс твоего экрана
+                const incomingMessage: MessageProps = {
                     id: e.messageData.id,
                     body: e.messageData.body,
-                    sender_id: e.messageData.sender.id,
+                    sender_id: senderId,
                     sender_name: e.messageData.sender.full_name,
                     sender_avatar: e.messageData.sender.avatar_url, 
-                    is_me: false,
+                    is_me: isItMe, // ТЕПЕРЬ ФЛАГ ВЫЧИСЛЯЕТСЯ ДИНАМИЧЕСКИ, А НЕ ЗАШИТ КАК FALSE!
                     date: 'Только что',
-                    // ПРАВИЛЬНЫЙ МАПИНГ: Переносим массив вложений из сокет-пакета
                     attachments: e.messageData.attachments || [], 
                 };
 
+                // ЗАЩИТА ОТ ДУБЛИРОВАНИЯ (Умное замещение):
+                // Если сокет вернул НАШЕ СОБСТВЕННОЕ сообщение, ищем в стейте оптимистичный фейк
+                if (isItMe) {
+                    const optimisticIndex = prevMessages.findIndex(
+                        msg => msg.id > 1000000000000 && msg.body === incomingMessage.body
+                    );
+
+                    if (optimisticIndex !== -1) {
+                        // Точечно меняем фейковый ID на реальный ID из базы данных СТРОГО на его позиции
+                        const updated = [...prevMessages];
+                        updated[optimisticIndex] = incomingMessage;
+                        return updated;
+                    }
+                }
+
+                // Если это реальное сообщение от собеседника — пушим в конец истории
                 return [...prevMessages, incomingMessage];
             });
         });
+
 
         // ДОБАВЛЯЕМ НОВОГО СЛУШАТЕЛЯ: Ловим удаление сообщений по сокетам
         channel.listen('.message.deleted', (e: { messageId: number }) => {
@@ -250,17 +296,33 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
         setLocalMessages(prevMessages => [...prevMessages, myOptimisticMessage]);
 
         // 2. Спокойно отправляем бинарник файла в фоновом режиме на бэкенд в Docker
-        post(`/messages/${chat.id}`, {
-            onSuccess: () => {
-                reset('body');
-                setData('chat_file', null);
-                setFileError(null);
-                const fileInput = document.getElementById('chat-file-input') as HTMLInputElement;
-                if (fileInput) fileInput.value = '';
-            },
-            preserveScroll: true,
-            preserveState: true, // КРИТИЧЕСКИ ВАЖНО: Запрещает Inertia затирать стейт React старым кэшем!
-        });
+        // post(`/messages/${chat.id}`, {
+        //     onSuccess: () => {
+        //         reset('body');
+        //         setData('chat_file', null);
+        //         setFileError(null);
+        //         const fileInput = document.getElementById('chat-file-input') as HTMLInputElement;
+        //         if (fileInput) fileInput.value = '';
+        //     },
+        //     preserveScroll: true,
+        //     preserveState: true, // КРИТИЧЕСКИ ВАЖНО: Запрещает Inertia затирать стейт React старым кэшем!
+        // });
+
+        // 2. Смещаем отправку запроса Inertia в следующий цикл Event Loop,
+        // давая React 19 время чисто и без лагов вывести синее облачко на экран за 0 миллисекунд
+        setTimeout(() => {
+            post(`/messages/${chat.id}`, {
+                onSuccess: () => {
+                    reset('body');
+                    setData('chat_file', null);
+                    setFileError(null);
+                    const fileInput = document.getElementById('chat-file-input') as HTMLInputElement;
+                    if (fileInput) fileInput.value = '';
+                },
+                preserveScroll: true,
+                preserveState: true,
+            });
+        }, 0); // Задержка 0 — это хак для управления приоритетами процессора
     };
 
     const handleDeleteMessage = (messageId: number) => {
@@ -296,101 +358,161 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                 {/* 2. Область сообщений (Читаем из localMessages вместо пропсов) */}
                 <div ref={scrollContainerRef} className="flex-grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
                     {/* НАХОДИМ ЦИКЛ ВЫВОДА СООБЩЕНИЙ ВНУТРИ ОБЛАСТИ ИСТОРИИ ПЕРЕПИСКИ */}
-                    {localMessages.map(msg => (
-                        <div 
-                            key={msg.id} 
-                            // group: позволяет дочерним элементам ловить наведение мыши (hover)
-                            // flex-row-reverse: переворачивает строку для ТВОИХ сообщений (улетают вправо)
-                            className={`flex items-start gap-2 max-w-[75%] group transition-all ${
-                                msg.is_me ? 'self-end flex-row-reverse' : 'self-start flex-row'
-                            }`}
-                        >
-                            {/* 1. АВАТАРКА: Всегда аккуратный круг, не сжимается благодаря shrink-0 */}
-                            <div className={`w-8 h-8 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${
-                                msg.is_me ? 'bg-blue-100' : 'bg-gray-200'
-                            }`}>
-                                {msg.is_me ? (
-                                    msg.sender_avatar ? <img src={msg.sender_avatar} alt="Я" className="w-full h-full object-cover" /> : '😎'
-                                ) : (
-                                    msg.sender_avatar ? <img src={msg.sender_avatar} alt="Собеседник" className="w-full h-full object-cover" /> : '💬'
-                                )}
-                            </div>
+                    {localMessages.map((msg, index) => {
+                        const stableKey = msg.id > 1000000000000 ? `opt-${index}` : `db-${msg.id}`;
 
-                            {/* 2. ОБЛАКО СООБЩЕНИЯ: Автоматически подстраивается под контент */}
-                            <div className={`p-3 rounded-xl text-sm relative shadow-sm max-w-full ${
-                                msg.is_me 
-                                    ? 'bg-blue-600 text-white rounded-tr-none' 
-                                    : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'
-                            }`}>
-                                {/* Имя отправителя для групповых чатов */}
-                                {chat.type === 'group' && !msg.is_me && (
-                                    <div className="text-[11px] font-semibold text-blue-700 mb-1">
-                                        {msg.sender_name}
-                                    </div>
-                                )}
-                                
-                                {/* Текст сообщения с отступом справа под время */}
-                                <p className="leading-relaxed break-words pr-10">{msg.body}</p>
-                                
-                                {/* Вывод вложений (цикл .map вложений, который мы отладили ранее) */}
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                    <div className="mt-2 flex flex-col gap-2">
-                                        {msg.attachments.map(file => (
-                                            <div key={file.id} className="w-full">
-                                                {file.type === 'photo' && file.filename && (
-                                                    <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1 max-w-xs">
-                                                        <img 
-                                                            src={file.localUrl ? file.localUrl : `/storage/${file.filename}`} 
-                                                            alt="Вложение" 
-                                                            className="max-w-full max-h-48 object-contain rounded-md" 
-                                                        />
-                                                    </div>
-                                                )}
-                                                {file.type === 'document' && file.filename && (
-                                                    <div className="flex items-center gap-2 p-2 rounded-lg bg-black/5 text-xs font-medium truncate max-w-xs">
-                                                        <span>📄</span>
-                                                        <a href={`/storage/${file.filename}`} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
-                                                            Открыть документ
-                                                        </a>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                
-                                {/* Метка времени в нижнем правом углу */}
-                                <span className={`text-[9px] absolute bottom-1 right-2 shrink-0 ${
-                                    msg.is_me ? 'text-blue-200' : 'text-gray-400'
+                        return (
+                            <div 
+                                key={msg.id} 
+                                id={`message-${msg.id}`}
+                                // group: позволяет дочерним элементам ловить наведение мыши (hover)
+                                // flex-row-reverse: переворачивает строку для ТВОИХ сообщений (улетают вправо)
+                                className={`flex items-start gap-2 max-w-[75%] group transition-all ${
+                                    msg.is_me ? 'self-end flex-row-reverse' : 'self-start flex-row'
+                                }`}
+                            >
+                                {/* 1. АВАТАРКА: Всегда аккуратный круг, не сжимается благодаря shrink-0 */}
+                                <div className={`w-8 h-8 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${
+                                    msg.is_me ? 'bg-blue-100' : 'bg-gray-200'
                                 }`}>
-                                    {msg.date}
-                                </span>
-                            </div>
-
-                            {/* 3. КНОПКА УДАЛЕНИЯ (КОРЗИНА): */}
-                            {/* Встает идеально рядом с облачком. Для твоих сообщений она будет СЛЕВА от текста благодаря flex-row-reverse */}
-                            {msg.is_me && (
-                                <div className="opacity-0 group-hover:opacity-100" >
-                                    <button
-                                        onClick={() => handleDeleteMessage(msg.id)}
-                                        // opacity-0 group-hover:opacity-100: Кнопка скрыта и плавно проявляется только при наведении на элемент!
-                                        className="transition-all duration-150 text-gray-400 hover:text-red-500 text-xs p-1.5 rounded-full hover:bg-gray-100 shrink-0 self-center"
-                                        title="Удалить сообщение"
-                                    >
-                                        🗑️
-                                    </button>
-                                    <span>
-                                        <button onClick={() => startEditMessage(msg)} className="text-gray-400 hover:text-blue-600 text-xs p-1 hover:bg-gray-100"
-                                        title="Редактировать сообщение"    
-                                        >
-                                            ✏️
-                                        </button>
-                                    </span>
+                                    {msg.is_me ? (
+                                        msg.sender_avatar ? <img src={msg.sender_avatar} alt="Я" className="w-full h-full object-cover" /> : '😎'
+                                    ) : (
+                                        msg.sender_avatar ? <img src={msg.sender_avatar} alt="Собеседник" className="w-full h-full object-cover" /> : '💬'
+                                    )}
                                 </div>
-                            )}
 
-                        </div>
-                    ))}
+                                {/* 2. ОБЛАКО СООБЩЕНИЯ: Автоматически подстраивается под контент */}
+                                {/* <div className={`p-3 rounded-xl text-sm relative shadow-sm max-w-full ${
+                                    msg.is_me 
+                                        ? 'bg-blue-600 text-white rounded-tr-none' 
+                                        : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'
+                                }`}>
+                                    Имя отправителя для групповых чатов
+                                    {chat.type === 'group' && !msg.is_me && (
+                                        <div className="text-[11px] font-semibold text-blue-700 mb-1">
+                                            {msg.sender_name}
+                                        </div>
+                                    )}
+                                    
+                                    Текст сообщения с отступом справа под время
+                                    <p className="leading-relaxed break-words pr-10">{msg.body}</p>
+                                    
+                                    Вывод вложений (цикл .map вложений, который мы отладили ранее)
+                                    {msg.attachments && msg.attachments.length > 0 && (
+                                        <div className="mt-2 flex flex-col gap-2">
+                                            {msg.attachments.map(file => (
+                                                <div key={file.id} className="w-full">
+                                                    {file.type === 'photo' && file.filename && (
+                                                        <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1 max-w-xs">
+                                                            <img 
+                                                                src={file.localUrl ? file.localUrl : `/storage/${file.filename}`} 
+                                                                alt="Вложение" 
+                                                                className="max-w-full max-h-48 object-contain rounded-md" 
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {file.type === 'document' && file.filename && (
+                                                        <div className="flex items-center gap-2 p-2 rounded-lg bg-black/5 text-xs font-medium truncate max-w-xs">
+                                                            <span>📄</span>
+                                                            <a href={`/storage/${file.filename}`} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
+                                                                Открыть документ
+                                                            </a>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    Метка времени в нижнем правом углу
+                                    <span className={`text-[9px] absolute bottom-1 right-2 shrink-0 ${
+                                        msg.is_me ? 'text-blue-200' : 'text-gray-400'
+                                    }`}>
+                                        {msg.date}
+                                    </span>
+                                </div> */}
+
+                                <div className={`p-2.5 rounded-xl text-sm shadow-sm max-w-full min-w-[70px] flex flex-col justify-between ${
+                                    msg.is_me 
+                                        ? 'bg-blue-600 text-white rounded-tr-none' 
+                                        : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'
+                                }`}>
+                                    {/* Имя отправителя для групповых чатов */}
+                                    {chat.type === 'group' && !msg.is_me && (
+                                        <div className="text-[11px] font-semibold text-blue-700 mb-1 shrink-0">
+                                            {msg.sender_name}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Контейнер для контента сообщения и времени в одну строку/блок */}
+                                    <div className="flex flex-col w-full relative">
+                                        {/* Текст сообщения без жестких правых отступов, переносится корректно */}
+                                        <p className="leading-relaxed break-words pb-3">{msg.body}</p>
+                                        
+                                        {/* Вывод вложений (оставляем без изменений внутри структуры) */}
+                                        {msg.attachments && msg.attachments.length > 0 && (
+                                            <div className="mt-1 mb-3 flex flex-col gap-2 shrink-0">
+                                                {msg.attachments.map(file => (
+                                                    <div key={file.id} className="w-full">
+                                                        {file.type === 'photo' && file.filename && (
+                                                            <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1 max-w-xs">
+                                                                <img 
+                                                                    src={file.localUrl ? file.localUrl : `/storage/${file.filename}`} 
+                                                                    alt="Вложение" 
+                                                                    className="max-w-full max-h-48 object-contain rounded-md" 
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        {file.type === 'document' && file.filename && (
+                                                            <div className="flex items-center gap-2 p-2 rounded-lg bg-black/5 text-xs font-medium truncate max-w-xs">
+                                                                <span>📄</span>
+                                                                <a href={`/storage/${file.filename}`} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
+                                                                    Открыть документ
+                                                                </a>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {/* Метка времени: теперь позиционируется аккуратно снизу справа, 
+                                            не накладываясь на текст, благодаря pb-3 у параграфа выше */}
+                                        <span className={`text-[9px] absolute -bottom-1.5 right-0 shrink-0 select-none ${
+                                            msg.is_me ? 'text-blue-200' : 'text-gray-400'
+                                        }`}>
+                                            {msg.date}
+                                        </span>
+                                    </div>
+                                </div>
+
+
+                                {/* 3. КНОПКА УДАЛЕНИЯ (КОРЗИНА): */}
+                                {/* Встает идеально рядом с облачком. Для твоих сообщений она будет СЛЕВА от текста благодаря flex-row-reverse */}
+                                {msg.is_me && (
+                                    <div className="opacity-0 group-hover:opacity-100" >
+                                        <button
+                                            onClick={() => handleDeleteMessage(msg.id)}
+                                            // opacity-0 group-hover:opacity-100: Кнопка скрыта и плавно проявляется только при наведении на элемент!
+                                            className="transition-all duration-150 text-gray-400 hover:text-red-500 text-xs p-1.5 rounded-full hover:bg-gray-100 shrink-0 self-center"
+                                            title="Удалить сообщение"
+                                        >
+                                            🗑️
+                                        </button>
+                                        <span>
+                                            <button onClick={() => startEditMessage(msg)} className="text-gray-400 hover:text-blue-600 text-xs p-1 hover:bg-gray-100"
+                                            title="Редактировать сообщение"    
+                                            >
+                                                ✏️
+                                            </button>
+                                        </span>
+                                    </div>
+                                )}
+
+                            </div>
+                        );
+                    })}
                     <div ref={messagesEndRef} />
                 </div>
 
