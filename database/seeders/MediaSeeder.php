@@ -19,6 +19,7 @@ class MediaSeeder extends Seeder
             'video' => MediaType::create(['name' => 'video']),
             'audio' => MediaType::create(['name' => 'audio']),
             'document' => MediaType::create(['name' => 'document']),
+            'text' => MediaType::create(['name' => 'text']),
         ];
 
         $users = User::all();
@@ -29,7 +30,7 @@ class MediaSeeder extends Seeder
 
             for ($i = 0; $i < $filesCount; $i++) {
                 // Случайно выбираем тип контента
-                $typeName = fake()->randomElement(['photo', 'video', 'audio', 'document']);
+                $typeName = fake()->randomElement(['photo', 'video', 'audio', 'document', 'text']);
                 $type = $types[$typeName];
 
                 // Формируем специфичные метаданные в зависимости от типа (как в реальном VK)
@@ -54,6 +55,7 @@ class MediaSeeder extends Seeder
                         'extension' => fake()->randomElement(['pdf', 'docx', 'xlsx', 'zip']),
                         'is_secure' => fake()->boolean(90),
                     ],
+                    'text' => [null],
                 };
 
                 Media::create([

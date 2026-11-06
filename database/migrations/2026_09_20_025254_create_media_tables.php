@@ -18,7 +18,7 @@ return new class extends Migration
         // 2. Центральная таблица медиафайлов соцсети
         Schema::create('media', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('media_type_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('media_type_id')->constrained()->onDelete('set null');
             $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Кто загрузил файл
             
             $table->text('body')->nullable();      // Текстовое описание к медиафайлу (например, подпись к фото)

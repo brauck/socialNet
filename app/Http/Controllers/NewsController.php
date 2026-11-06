@@ -22,17 +22,16 @@ class NewsController extends Controller
     {
         $currentUserId = Auth::id();
 
-        // Вытаскиваем все медиафайлы соцсети, сортируя от новых к старым
+        // Вытаскиваем все медиафайлы соцсети, сортируя от новых к старым.
+        // withCount('likes') под капотом Laravel сам поймет, что связь полиморфная, 
+        // и сделает оптимизированный подсчет количества строк в PostgreSQL.
         $posts = Media::with(['user.profile', 'type'])
             ->withCount('likes')
             ->latest()
             ->get()
-            ->map(function ($media) use ($currentUserId) {
-                // Проверяем, ставил ли текущий пользователь лайк этому посту
-                $likedByMe = Like::where('user_id', $currentUserId)
-                    ->where('media_id', $media->id)
-                    ->exists();
-
+            ->map(function ($media) {
+                // Вся логика форматирования полей, включая liked_by_me, 
+                // теперь инкапсулирована внутри унифицированного метода formatPost!
                 return $this->formatPost($media);
             });
 
@@ -41,6 +40,7 @@ class NewsController extends Controller
             'current_user_id' => $currentUserId
         ]);
     }
+
 
     // Метод для переключения лайка (обработка клика на фронтенде)
     public function toggleLike(Media $media)
@@ -142,9 +142,11 @@ class NewsController extends Controller
             $filename = $file->store("uploads/{$folder}", 'public');
             Log::info("filename: " . $filename);
         } else {
-                // Если это чисто текстовый пост — привяжем его к типу 'document' для совместимости с лентой
-                $mediaTypeId = MediaType::where('name', 'document')->first()->id;
+            // Если это чисто текстовый пост — привязываем его к специальному типу контента 'text'
+            $mediaTypeId = MediaType::where('name', 'text')->first()->id;
         }
+
+
 
                 // Переменная для выноса готового пакета из замыкания
         $formattedPost = null;

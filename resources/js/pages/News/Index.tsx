@@ -8,7 +8,7 @@ interface PostProps {
     body: string | null;
     filename: string;
     size: number;
-    type: 'photo' | 'video' | 'audio' | 'document';
+    type: 'photo' | 'video' | 'audio' | 'document' | 'text';
     metadata: any;
     likes_count: number;
     liked_by_me: boolean;
@@ -408,12 +408,13 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                                 </div>
                             )}
 
-                            {/* Отображение других типов файлов (Аудио, Видео, Документы — оставляем без изменений) */}
-                            {post.type !== 'photo' && post.type !== 'document' && (
+                            {/* Отображение других типов файлов (Аудио, Видео, 📄 Документы — оставляем без изменений) */}
+                            {post.type !== 'photo' && post.type !== 'text' && (
                                 <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 text-sm">
                                     {/* Твой существующий код для аудио/видео */}
                                     {post.type === 'audio' && <div>🎵 {post.metadata?.artist} — {post.metadata?.title}</div>}
                                     {post.type === 'video' && <div>🎥 Видеозапись ({post.metadata?.resolution})</div>}
+                                    {post.type === 'document' && <div>📄 Документ</div>}
                                 </div>
                             )}
 
