@@ -26,13 +26,17 @@ class Media extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Получить все лайки, поставленные этому медиафайлу
+    /**
+     * Получить все полиморфные лайки, поставленные этой публикации (Media)
+     */
     public function likes()
     {
-        return $this->hasMany(Like::class);
+        // Первым параметром передаем модель Лайка, вторым — префикс полиморфных полей ('likeable')
+        return $this->morphMany(Like::class, 'likeable');
     }
 
-        public function messages(): MorphToMany
+
+    public function messages(): MorphToMany
     {
         return $this->morphedByMany(Message::class, 'attachable', 'attachments');
     }

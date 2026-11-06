@@ -51,6 +51,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/messages/{chat}', [MessageController::class, 'store']);
     Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
     Route::put('/messages/{message}', [MessageController::class, 'update'])->name('messages.update');
+    Route::get('/chats/media/{media}', [MessageController::class, 'downloadChatMedia'])
+        ->name('chats.media.download');
+
 
     // news
     Route::get('/news', [NewsController::class, 'index']);

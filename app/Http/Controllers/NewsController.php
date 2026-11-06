@@ -49,17 +49,21 @@ class NewsController extends Controller
         
         // Оборачиваем работу с БД в транзакцию
         DB::transaction(function () use ($userId, $media) {
-            $like = Like::where('user_id', $userId)->where('media_id', $media->id)->first();
+            // Используем полиморфную связь для поиска лайка конкретного юзера под этим постом
+            $like = $media->likes()->where('user_id', $userId)->first();
 
             if ($like) {
                 $like->delete();
             } else {
-                Like::create([
+                // Магия Eloquent: метод create() через связь сам подставит 
+                // в базу 'likeable_id' => $media->id и 'likeable_type' => App\Models\Media
+                $media->likes()->create([
                     'user_id' => $userId,
-                    'media_id' => $media->id,
                 ]);
             }
         });
+
+
 
         // 1. Считаем свежее количество лайков под постом из PostgreSQL (вне транзакции)
         $likesCount = $media->likes()->count();
@@ -136,6 +140,7 @@ class NewsController extends Controller
 
             // Сохраняем файл на диск в Docker по относительному пути (storage/app/public/uploads/...)
             $filename = $file->store("uploads/{$folder}", 'public');
+            Log::info("filename: " . $filename);
         } else {
                 // Если это чисто текстовый пост — привяжем его к типу 'document' для совместимости с лентой
                 $mediaTypeId = MediaType::where('name', 'document')->first()->id;

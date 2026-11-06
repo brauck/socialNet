@@ -6,22 +6,25 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up(): void
-    {
-        Schema::create('likes', function (Blueprint $table) {
-            $table->id(); // Суррогатный первичный ключ по нашему паттерну
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');   // Кто лайкнул
-            $table->foreignId('media_id')->constrained()->onDelete('cascade'); // Что лайкнул
-            $table->timestamps();
+        public function up(): void
+        {
+            Schema::create('likes', function (Blueprint $table) {
+                $table->id(); 
+                $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Кто лайкнул
+                
+                // Магия Laravel: создает поля likeable_id (bigint) и likeable_type (varchar)
+                // Это позволит привязать лайк к чему угодно: Media (к посту), Message (к сообщению) и т.д.
+                $table->morphs('likeable'); 
+                $table->timestamps();
 
-            // КРИТИЧЕСКИ ВАЖНО: Один пользователь — один лайк на один медиафайл
-            $table->unique(['user_id', 'media_id']);
+                // КРИТИЧЕСКИ ВАЖНО: Один пользователь — один лайк на один конкретный объект
+                $table->unique(['user_id', 'likeable_id', 'likeable_type']);
 
-            // Индексы для мгновенного подсчета количества лайков под фото/видео
-            $table->index('media_id');
-            $table->index('user_id');
-        });
-    }
+                // Индексы для мгновенного подсчета лайков в PostgreSQL
+                $table->index(['likeable_id', 'likeable_type']);
+                $table->index('user_id');
+            });
+        }
 
     public function down(): void
     {

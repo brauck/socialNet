@@ -19,11 +19,11 @@ class LikeSeeder extends Seeder
             $randomMediaItems = $allMedia->random(rand(5, 15));
 
             foreach ($randomMediaItems as $media) {
-                // Благодаря блоку try-catch или предварительной проверке мы защищаем сидер
-                // от падения, если вдруг случайно выберется дубликат (хотя метод random() выдает уникальные элементы для одного прохода)
-                Like::create([
+                // Магия Eloquent: вызываем метод likes() у модели поста (Media) 
+                // и передаем только ID пользователя. Laravel сам подставит 
+                // в базу 'likeable_id' => $media->id и 'likeable_type' => App\Models\Media
+                $media->likes()->create([
                     'user_id' => $user->id,
-                    'media_id' => $media->id,
                 ]);
             }
         }

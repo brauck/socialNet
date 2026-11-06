@@ -458,7 +458,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                                         {file.type === 'photo' && file.filename && (
                                                             <div className="rounded-lg overflow-hidden border border-black/5 bg-black/5 p-1 max-w-xs">
                                                                 <img 
-                                                                    src={file.localUrl ? file.localUrl : `/storage/${file.filename}`} 
+                                                                    src={file.localUrl ? file.localUrl : file.filename}
                                                                     alt="Вложение" 
                                                                     className="max-w-full max-h-48 object-contain rounded-md" 
                                                                 />
@@ -467,7 +467,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                                         {file.type === 'document' && file.filename && (
                                                             <div className="flex items-center gap-2 p-2 rounded-lg bg-black/5 text-xs font-medium truncate max-w-xs">
                                                                 <span>📄</span>
-                                                                <a href={`/storage/${file.filename}`} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
+                                                                <a href={file.filename} target="_blank" rel="noreferrer" className="underline hover:text-blue-200 truncate">
                                                                     Открыть документ
                                                                 </a>
                                                             </div>

@@ -150,11 +150,15 @@ class MessageController extends Controller
                     'attachments' => $message->media->map(function ($item) {
                         return [
                             'id' => $item->id,
-                            'filename' => $item->filename,
+                            // Генерируем защищенную ссылку через роут вместо прямого пути
+                            'filename' => route('chats.media.download', ['media' => $item->id]),
                             'type' => $item->type->name,
                             'metadata' => $item->metadata,
+                            'likes_count' => $item->likes()->count(),
+                            'liked_by_me' => $item->likes()->where('user_id', Auth::id())->exists(),
                         ];
                     })->toArray(),
+
                 ];
             });
         });
@@ -234,7 +238,9 @@ class MessageController extends Controller
                 // Физическое сохранение файла на диск. 
                 // Если транзакция упадет ДАЛЬШЕ (например на attach), этот файл останется на диске.
                 // Но в БД записей не будет, что гарантирует целостность данных.
-                $filename = $file->store("uploads/{$folder}", 'public');
+                // Меняем диск 'public' на закрытый диск 'local' (пишет в защищенную папку storage/app/)
+                $filename = $file->store("uploads/{$folder}", 'local');
+                Log::info("filename: " . $filename);
 
                 $media = Media::create([
                     'media_type_id' => $typeRecord->id,
@@ -370,4 +376,40 @@ class MessageController extends Controller
         return redirect()->back();
     }
 
+        /**
+     * Безопасная отдача файлов мессенджера с проверкой прав доступа
+     */
+    public function downloadChatMedia(Media $media)
+    {
+        $user = Auth::user();
+
+        // Находим сообщение, к которому прикреплен этот медиафайл через таблицу attachments
+        $message = $media->messages()->first();
+
+        if (!$message) {
+            abort(404, 'Файл не связан ни с одним сообщением.');
+        }
+
+        // Безопасность: Проверяем, состоит ли текущий пользователь в чате этого сообщения
+        $isMember = DB::table('chat_members')
+            ->where('chat_id', $message->chat_id)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$isMember) {
+            abort(403, 'У вас нет доступа к файлам этого чата.');
+        }
+
+        // Проверяем физическое наличие файла на защищенном диске
+        if (!Storage::disk('local')->exists($media->filename)) {
+            abort(404, 'Файл физически удален или не найден.');
+        }
+
+        // Получаем абсолютный путь к приватному файлу на диске local в Docker
+        $absolutePath = Storage::disk('local')->path($media->filename);
+        Log::info("absolutePath: " . $absolutePath);
+        // Возвращаем файл в браузер в виде потока (inline) с автоматическим MIME-типом
+        return response()->file($absolutePath);
+
+    }
 }
