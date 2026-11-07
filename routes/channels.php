@@ -19,3 +19,10 @@ Broadcast::channel('chat.{chatId}', function ($user, $chatId) {
         ->where('user_id', $user->id)
         ->exists();
 });
+
+// Защищаем персональный канал пользователя
+Broadcast::channel('user.{id}', function ($user, $id) {
+    // Железное правило: текущий залогиненный юзер ($user->id) 
+    // имеет право слушать ТОЛЬКО свой собственный персональный канал
+    return (int) $user->id === (int) $id;
+});

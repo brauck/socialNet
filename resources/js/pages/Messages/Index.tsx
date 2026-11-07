@@ -1,5 +1,5 @@
 import { Head, useForm, router } from '@inertiajs/react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import MainLayout from '../../Layouts/MainLayout';
 
 interface LastMessageProps {
@@ -27,18 +27,74 @@ interface ChatProps {
 interface IndexProps {
     chats: ChatProps[];
     friends: FriendProps[];
+    current_user_id: number;
 }
 
-const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
+const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) => {
     // Счетчики групп
 
-    const [isDialogCount, setIsDialogCount] = useState(chats.filter(chat => chat.type === 'dialog').length);
-    const [isGroupCount, setIsGroupCount] = useState(chats.filter(chat => chat.type === 'group').length);
+    const [dialogCount, setDialogCount] = useState(chats.filter(chat => chat.type === 'dialog').length);
+    const [groupCount, setGroupCount] = useState(chats.filter(chat => chat.type === 'group').length);
     // const countDialogs = chats.filter(chat => chat.type === 'dialog').length;
     // const countGroup = chats.filter(chat => chat.type === 'group').length;
 
     // Состояние, открыта ли панель создания группового чата
     const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+
+    const [localChats, setLocalChats] = useState<ChatProps[]>(chats);
+
+    // Синхронизируем стейт, если пропсы обновились жестким переходом
+    useEffect(() => {
+        setLocalChats(chats);
+    }, [chats]);
+
+    useEffect(() => {
+        // Подключаемся к приватному каналу текущего залогиненного пользователя
+        const userChannel = window.Echo.private(`user.${current_user_id}`);
+
+        userChannel.listen('.chat.list.updated', (e: { messageData: any }) => {
+            console.log('Сокет поймал обновление списка чатов:', e.messageData);
+
+            setLocalChats(prevChats => {
+                // 1. Находим, есть ли уже этот чат в нашем списке на экране
+                const chatIndex = prevChats.findIndex(c => c.id === e.messageData.chat_id);
+
+                // Формируем обновленный объект последнего сообщения в VK-стиле
+                const updatedLastMessage = {
+                    id: e.messageData.id,
+                    body: e.messageData.body,
+                    is_read: false, // Раз оно прилетело по сокету — оно гарантированно непрочитано для нас
+                    sender_name: e.messageData.sender.full_name.split(' ')[0], // Берем только имя
+                    is_me: false,
+                    date: 'Только что'
+                };
+
+                if (chatIndex !== -1) {
+                    // ЕСЛИ ЧАТ УЖЕ ЕСТЬ: Вытаскиваем его, обновляем последнее сообщение
+                    const targetChat = {
+                        ...prevChats[chatIndex],
+                        last_message: updatedLastMessage
+                    };
+
+                    // Фильтруем массив, убирая чат со старой позиции
+                    const filteredChats = prevChats.filter(c => c.id !== e.messageData.chat_id);
+
+                    // Возвращаем новый массив, где обновленный чат встает на ПЕРВОЕ место!
+                    return [targetChat, ...filteredChats];
+                } else {
+                    // ЕСЛИ ЭТО СВЕЖЕСОЗДАННЫЙ ЧАТ (которого не было на экране):
+                    // Тут можно сделать быстрый router.reload() или дождаться полной синхронизации, 
+                    // но для стабильности мы просто вернем текущий список до F5
+                    return prevChats;
+                }
+            });
+        });
+
+        return () => {
+            window.Echo.leaveChannel(`user.${current_user_id}`);
+        };
+    }, [current_user_id]);
+
 
     // Инициализируем форму через Inertia useForm
     const { data, setData, post, processing, reset, errors } = useForm({
@@ -59,7 +115,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
     const handleSubmitGroup = (e: React.SubmitEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!data.title.trim() || data.member_ids.length === 0) return;
-        setIsGroupCount(isGroupCount + 1);
+        setGroupCount(groupCount + 1);
 
         post('/chats/group', {
             preserveState: true,
@@ -85,7 +141,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
                     <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                         <h2 className="text-sm font-semibold text-gray-800">Все чаты</h2>
                         <span className="text-xs text-gray-500 pl-5">
-                            всего: {chats.length} (диалоги: {isDialogCount}, групповые: {isGroupCount})
+                            всего: {chats.length} (диалоги: {dialogCount}, групповые: {groupCount})
                         </span>
                     </div>
                     <button 
@@ -158,7 +214,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
                             У вас пока нет активных диалогов.
                         </div>
                     ) : (
-                        chats.map(chat => {
+                        localChats.map(chat => {
                             // Проверяем, нужно ли подсветить чат как непрочитанный (VK стиль)
                             const isUnread = chat.last_message && !chat.last_message.is_read && !chat.last_message.is_me;
 

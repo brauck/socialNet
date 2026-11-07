@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Events\MessageDeleted;
 use App\Events\MessageUpdated;
+use App\Events\ChatListUpdated;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -70,7 +71,8 @@ class MessageController extends Controller
 
         return Inertia::render('Messages/Index', [
             'chats' => $chats,
-            'friends' => $friends // Передаем друзей на фронтенд списку чатов
+            'friends' => $friends, // Передаем друзей на фронтенд списку чатов
+            'current_user_id' => Auth::id() // Напрямую отдаем ID текущего залогиненного пользователя
         ]);        
     }
     public function show(Chat $chat)
@@ -308,7 +310,7 @@ class MessageController extends Controller
             foreach ($memberIds as $memberId) {
                 // Создаем и шлем новое событие в персональный канал каждого участника чата
                 // (Событие ChatListUpdated мы создадим строчкой ниже, либо передадим структуру через существующие каналы)
-                broadcast(new \App\Events\ChatListUpdated($memberId, $formattedMessage));
+                broadcast(new ChatListUpdated($memberId, $formattedMessage))->toOthers();
             }
         }
 
