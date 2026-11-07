@@ -197,8 +197,15 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
 
         // Отписываемся от приватного канала при уходе из чата (SPA-безопасность)
         return () => {
+            // Сначала полностью удаляем прослушивание конкретных событий, чтобы они не копились в памяти
+            window.Echo.private(`chat.${chat.id}`).stopListening('.message.sent');
+            window.Echo.private(`chat.${chat.id}`).stopListening('.message.deleted');
+            window.Echo.private(`chat.${chat.id}`).stopListening('.message.updated');
+            
+            // И только после этого окончательно покидаем сам канал
             window.Echo.leaveChannel(`chat.${chat.id}`);
         };
+
     }, [chat.id]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -23,6 +23,9 @@ class ChatListUpdated implements ShouldBroadcast
     {
         $this->memberId = $memberId;
         $this->messageData = $messageData;
+
+        // Приказывает воркеру не слать это событие обратно автору запроса
+        $this->dontBroadcastToCurrentUser();
     }
 
     /**

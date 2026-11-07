@@ -91,6 +91,8 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) =
         });
 
         return () => {
+            // Выжигаем слушателя из памяти перед уходом со страницы диалогов
+            window.Echo.private(`user.${current_user_id}`).stopListening('.chat.list.updated');
             window.Echo.leaveChannel(`user.${current_user_id}`);
         };
     }, [current_user_id]);
