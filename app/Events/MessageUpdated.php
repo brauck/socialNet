@@ -12,11 +12,11 @@ class MessageUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $chatId;
-    public $messageId;
-    public $newBody;
+    public int $chatId;
+    public int $messageId;
+    public string $newBody;
 
-    public function __construct($chatId, $messageId, $newBody)
+    public function __construct(int $chatId, int $messageId, string $newBody)
     {
         $this->chatId = $chatId;
         $this->messageId = $messageId;

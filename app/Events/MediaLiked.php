@@ -12,11 +12,11 @@ class MediaLiked implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $mediaId;
-    public $likesCount;
+    public int $mediaId;
+    public int $likesCount;
 
     // Передаем в сокет ID поста и актуальное количество лайков из базы
-    public function __construct($mediaId, $likesCount)
+    public function __construct(int $mediaId, int $likesCount)
     {
         $this->mediaId = $mediaId;
         $this->likesCount = $likesCount;

@@ -13,9 +13,9 @@ class PostDeleted implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     // Передаем только ID удаленного поста, чтобы фронтенд знал, какую карточку стереть
-    public $postId;
+    public int $postId;
 
-    public function __construct($postId)
+    public function __construct(int $postId)
     {
         $this->postId = $postId;
     }

@@ -30,6 +30,13 @@ interface IndexProps {
 }
 
 const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
+    // Счетчики групп
+
+    const [isDialogCount, setIsDialogCount] = useState(chats.filter(chat => chat.type === 'dialog').length);
+    const [isGroupCount, setIsGroupCount] = useState(chats.filter(chat => chat.type === 'group').length);
+    // const countDialogs = chats.filter(chat => chat.type === 'dialog').length;
+    // const countGroup = chats.filter(chat => chat.type === 'group').length;
+
     // Состояние, открыта ли панель создания группового чата
     const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
@@ -52,6 +59,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
     const handleSubmitGroup = (e: React.SubmitEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!data.title.trim() || data.member_ids.length === 0) return;
+        setIsGroupCount(isGroupCount + 1);
 
         post('/chats/group', {
             preserveState: true,
@@ -60,10 +68,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
                 reset('title', 'member_ids');
             }
         });
-    };
-
-    const countDialogs = chats.filter(chat => chat.type === 'dialog').length;
-    const countGroup = chats.filter(chat => chat.type === 'group').length;
+    };    
 
     return (
         <MainLayout>
@@ -80,7 +85,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
                     <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                         <h2 className="text-sm font-semibold text-gray-800">Все чаты</h2>
                         <span className="text-xs text-gray-500 pl-5">
-                            всего: {chats.length} (диалоги: {countDialogs}, групповые: {countGroup})
+                            всего: {chats.length} (диалоги: {isDialogCount}, групповые: {isGroupCount})
                         </span>
                     </div>
                     <button 
@@ -90,7 +95,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
                         }}
                         className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${isCreatingGroup ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                     >
-                        {isCreatingGroup ? '✕ Отмена' : '👥 Создать беседу'}
+                        {isCreatingGroup ? '✕ Отмена' : '👥 Создать групповой чат'}
                     </button>
                 </div>
 

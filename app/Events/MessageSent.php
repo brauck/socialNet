@@ -13,7 +13,7 @@ class MessageSent implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     // Массив или объект с данными сообщения, который улетит в React
-    public $messageData;
+    public array $messageData;
 
     public function __construct(array $messageData)
     {

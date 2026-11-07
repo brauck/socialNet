@@ -297,7 +297,19 @@ class MessageController extends Controller
         // Если бы мы вещали изнутри транзакции, сокет Reverb мог бы доставить сообщение на фронтенд
         // до того, как PostgreSQL успеет зафиксировать коммит. Юзер бы поймал ошибку 404 при попытке его прочесть.
         if ($formattedMessage) {
+            // 1. Вещаем в канал конкретной комнаты (для тех, у кого открыт этот чат)
             broadcast(new MessageSent($formattedMessage))->toOthers();
+
+            // 2. Вещаем специальное событие обновления списка чатов для всех участников, кроме себя
+            // Нам нужно найти всех участников этого чата, кроме текущего отправителя
+            $chat = Chat::find($chatId);
+            $memberIds = $chat->members()->where('user_id', '<>', $userId)->pluck('user_id');
+
+            foreach ($memberIds as $memberId) {
+                // Создаем и шлем новое событие в персональный канал каждого участника чата
+                // (Событие ChatListUpdated мы создадим строчкой ниже, либо передадим структуру через существующие каналы)
+                broadcast(new \App\Events\ChatListUpdated($memberId, $formattedMessage));
+            }
         }
 
         return redirect()->back();
