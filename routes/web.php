@@ -47,12 +47,21 @@ Route::middleware('auth')->group(function () {
     Route::get('/friends', [FriendController::class, 'index']);
     // messages
     Route::get('/messages', [MessageController::class, 'index']);    
-    Route::get('/messages/{chat}', [MessageController::class, 'show'])->name('messages.show');
+    Route::get('/messages/{chat}', [MessageController::class, 'show'])
+        ->name('messages.show');
     Route::post('/messages/{chat}', [MessageController::class, 'store']);
-    Route::delete('/messages/{message}', [MessageController::class, 'destroy'])->name('messages.destroy');
-    Route::put('/messages/{message}', [MessageController::class, 'update'])->name('messages.update');
+    Route::delete('/messages/{message}', [MessageController::class, 'destroy'])
+        ->name('messages.destroy');
+    Route::put('/messages/{message}', [MessageController::class, 'update'])
+        ->name('messages.update');
     Route::get('/chats/media/{media}', [MessageController::class, 'downloadChatMedia'])
         ->name('chats.media.download');
+    // Создание или открытие существующего диалога 1-на-1
+    Route::post('/chats/dialog', [MessageController::class, 'storeDialog'])
+        ->name('chats.dialog.store');
+    // Создание группового чата (название группы + массив участников)
+    Route::post('/chats/group', [MessageController::class, 'storeGroup'])
+        ->name('chats.group.store');
 
 
     // news

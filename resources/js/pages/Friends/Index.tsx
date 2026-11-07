@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { router } from '@inertiajs/react'; // Добавили импорт для фоновых AJAX-запросов
+
 import MainLayout from '../../Layouts/MainLayout';
 
 interface FriendProps {
@@ -14,6 +16,12 @@ interface IndexProps {
 }
 
 const Index: React.FC<IndexProps> = ({ friends, incomingRequests }) => {
+    const handleWriteMessage = (friendId: number) => {
+        router.post('/chats/dialog', {
+            interlocutor_id: friendId
+        });
+    };
+
     const [activeTab, setActiveTab] = useState<'my' | 'requests'>('my');
 
     const currentList = activeTab === 'my' ? friends : incomingRequests;
@@ -71,9 +79,17 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests }) => {
 
                                 <div className="flex gap-2">
                                     {activeTab === 'my' ? (
-                                        <button className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded-md text-xs font-medium hover:bg-gray-200 transition-colors">
-                                            Убрать из друзей
-                                        </button>
+                                        <>
+                                            <button 
+                                                onClick={() => handleWriteMessage(person.id)}
+                                                className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
+                                            >
+                                                Написать
+                                            </button>
+                                            <button className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded-md text-xs font-medium hover:bg-gray-200 transition-colors">
+                                                Убрать из друзей
+                                            </button>
+                                        </>
                                     ) : (
                                         <>
                                             <button className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use \App\Models\User;
 use App\Models\Chat;
 use App\Models\Message;
 use App\Models\Media;
@@ -20,7 +21,7 @@ class MessageController extends Controller
 {
     public function index()
     {
-        /** @var \App\Models\User $user */
+        /** @var User $user */
         $user = Auth::user();
 
         // Получаем все чаты, в которых состоит текущий пользователь,
@@ -58,9 +59,18 @@ class MessageController extends Controller
                         : null,
                 ];
             });
+        
+        // Получаем список подтвержденных друзей текущего пользователя для формы создания группы
+        $friends = $user->friend_ids ? User::whereIn('id', $user->friend_ids)->get()->map(function ($friend) {
+            return [
+                'id' => $friend->id,
+                'full_name' => $friend->first_name . ' ' . $friend->last_name,
+            ];
+        }) : [];
 
         return Inertia::render('Messages/Index', [
-            'chats' => $chats
+            'chats' => $chats,
+            'friends' => $friends // Передаем друзей на фронтенд списку чатов
         ]);        
     }
     public function show(Chat $chat)
@@ -410,6 +420,98 @@ class MessageController extends Controller
         Log::info("absolutePath: " . $absolutePath);
         // Возвращаем файл в браузер в виде потока (inline) с автоматическим MIME-типом
         return response()->file($absolutePath);
+    }
 
+        /**
+     * Создать новый диалог 1-на-1 или открыть уже существующий
+     */
+    public function storeDialog(Request $request)
+    {
+        // 1. Валидируем, что ID собеседника передан и существует в таблице users
+        $request->validate([
+            'interlocutor_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        $myId = Auth::id();
+        $interlocutorId = (int) $request->interlocutor_id;
+
+        // Защита от создания диалога с самим собой
+        if ($myId === $interlocutorId) {
+            abort(400, 'Нельзя создать диалог с самим собой.');
+        }
+
+        // 2. ХИТРЫЙ ПОИСК ДУБЛИКАТА: Ищем общий чат типа 'dialog' между двумя юзерами
+        // Мы ищем чаты, в которых состоит текущий пользователь, и проверяем, 
+        // есть ли среди них чат типа 'dialog', где также состоит наш собеседник.
+        /** @var User $user */
+        $user = Auth::user();
+        $existingChat = $user->chats()
+            ->where('type', 'dialog')
+            ->whereHas('members', function ($query) use ($interlocutorId) {
+                $query->where('user_id', $interlocutorId);
+            })
+            ->first();
+
+        // 3. Если диалог уже был создан ранее — просто перенаправляем на него!
+        if ($existingChat) {
+            return redirect()->route('messages.show', ['chat' => $existingChat->id]);
+        }
+
+        // Переменная для выноса ID нового чата из замыкания транзакции
+        $newChatId = null;
+
+        // 4. ЕСЛИ ЧАТА НЕТ — СОЗДАЕМ ЕГО ВНУТРИ ТРАНЗАКЦИИ
+        DB::transaction(function () use ($myId, $interlocutorId, &$newChatId) {
+            // Создаем системную запись чата
+            $chat = Chat::create([
+                'type' => 'dialog',
+                'title' => null, // Для диалогов название не нужно (оно вычисляется по имени собеседника)
+            ]);
+
+            // Привязываем обоих участников к чату в промежуточной таблице chat_members
+            $chat->members()->attach([$myId, $interlocutorId]);
+
+            $newChatId = $chat->id;
+        });
+
+        // Плавный редирект в мессенджер в созданную комнату
+        return redirect()->route('messages.show', ['chat' => $newChatId]);
+    }
+
+    /**
+     * Создать новый групповой чат
+     */
+    public function storeGroup(Request $request)
+    {
+        // 1. Валидация: название группы обязательно, массив участников должен содержать существующие ID пользователей
+        $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'member_ids' => ['required', 'array', 'min:1'], // Хотя бы один друг должен быть выбран
+            'member_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $myId = Auth::id();
+        
+        // Собираем всех будущих участников чата в один массив (выбранные друзья + сам создатель)
+        $allMemberIds = array_unique(array_merge($request->member_ids, [$myId]));
+
+        $newChatId = null;
+
+        // 2. ЗАПУСКАЕМ ТРАНЗАКЦИЮ ДЛЯ СОХРАНЕНИЯ СВЯЗЕЙ В POSTGRESQL
+        DB::transaction(function () use ($request, $allMemberIds, &$newChatId) {
+            // Создаем групповой чат
+            $chat = Chat::create([
+                'type' => 'group',
+                'title' => $request->title,
+            ]);
+
+            // Массово привязываем всех участников к чату в таблице chat_members
+            $chat->members()->attach($allMemberIds);
+
+            $newChatId = $chat->id;
+        });
+
+        // Бесшовный SPA-переход прямо внутрь свежесозданной группы!
+        return redirect()->route('messages.show', ['chat' => $newChatId]);
     }
 }

@@ -1,6 +1,5 @@
-import { Head } from '@inertiajs/react';
-import { router } from '@inertiajs/react';
-import React from 'react';
+import { Head, useForm, router } from '@inertiajs/react';
+import React, { useState } from 'react';
 import MainLayout from '../../Layouts/MainLayout';
 
 interface LastMessageProps {
@@ -10,6 +9,11 @@ interface LastMessageProps {
     sender_name: string;    
     is_me: boolean;
     date: string;
+}
+
+interface FriendProps {
+    id: number;
+    full_name: string;
 }
 
 interface ChatProps {
@@ -22,21 +26,128 @@ interface ChatProps {
 
 interface IndexProps {
     chats: ChatProps[];
+    friends: FriendProps[];
 }
 
-const Index: React.FC<IndexProps> = ({ chats }) => {
+const Index: React.FC<IndexProps> = ({ chats, friends = [] }) => {
+    // Состояние, открыта ли панель создания группового чата
+    const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+
+    // Инициализируем форму через Inertia useForm
+    const { data, setData, post, processing, reset, errors } = useForm({
+        title: '',
+        member_ids: [] as number[], // Сюда будут падать ID выбранных друзей
+    });
+
+    // Функция переключения чекбокса друга
+    const handleToggleMember = (friendId: number) => {
+        if (data.member_ids.includes(friendId)) {
+            setData('member_ids', data.member_ids.filter(id => id !== friendId));
+        } else {
+            setData('member_ids', [...data.member_ids, friendId]);
+        }
+    };
+
+    // Отправка формы на бэкенд в Docker
+    const handleSubmitGroup = (e: React.SubmitEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!data.title.trim() || data.member_ids.length === 0) return;
+
+        post('/chats/group', {
+            preserveState: true,
+            onSuccess: () => {
+                setIsCreatingGroup(false);
+                reset('title', 'member_ids');
+            }
+        });
+    };
+
+    const countDialogs = chats.filter(chat => chat.type === 'dialog').length;
+    const countGroup = chats.filter(chat => chat.type === 'group').length;
+
     return (
         <MainLayout>
             <Head title="Сообщения" />
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            {/* <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"> */}
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col h-[calc(100dvh-140px)] min-h-[400px]">
+                
                 {/* Шапка мессенджера */}
-                <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                {/* <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <h2 className="text-sm font-semibold text-gray-800">Все диалоги</h2>
                     <span className="text-xs text-gray-500">Всего чатов: {chats.length}</span>
+                </div> */}
+                <div className="flex justify-between items-center w-full">
+                    <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h2 className="text-sm font-semibold text-gray-800">Все чаты</h2>
+                        <span className="text-xs text-gray-500 pl-5">
+                            всего: {chats.length} (диалоги: {countDialogs}, групповые: {countGroup})
+                        </span>
+                    </div>
+                    <button 
+                        onClick={() => {
+                            setIsCreatingGroup(!isCreatingGroup);
+                            if (isCreatingGroup) reset('title', 'member_ids');
+                        }}
+                        className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${isCreatingGroup ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                    >
+                        {isCreatingGroup ? '✕ Отмена' : '👥 Создать беседу'}
+                    </button>
                 </div>
 
+                {/* Разворачивающаяся панель создания чата */}
+                {isCreatingGroup && (
+                    <form onSubmit={handleSubmitGroup} className="border-t border-gray-200 pt-3 flex flex-col gap-3 animate-fade-in">
+                        <div className="flex flex-col gap-1">
+                            <input 
+                                type="text" 
+                                placeholder="Введите название беседы..." 
+                                value={data.title}
+                                onChange={e => setData('title', e.target.value)}
+                                className="w-full bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-blue-400"
+                                disabled={processing}
+                                required
+                            />
+                            {errors.title && <span className="text-[11px] text-red-600">{errors.title}</span>}
+                        </div>
+
+                        {/* Блок выбора друзей */}
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-medium text-gray-500">Пригласить друзей (выберите хотя бы одного):</span>
+                            {friends.length === 0 ? (
+                                <div className="text-xs text-gray-400 italic py-1">У вас пока нет друзей, которых можно пригласить.</div>
+                            ) : (
+                                <div className="max-h-24 overflow-y-auto border border-gray-100 bg-white rounded p-2 flex flex-col gap-1">
+                                    {friends.map(friend => (
+                                        <label key={friend.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer select-none py-0.5 hover:bg-gray-50">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={data.member_ids.includes(friend.id)}
+                                                onChange={() => handleToggleMember(friend.id)}
+                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-400 w-3.5 h-3.5"
+                                                disabled={processing}
+                                            />
+                                            <span>{friend.full_name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                            {errors.member_ids && <span className="text-[11px] text-red-600">{errors.member_ids}</span>}
+                        </div>
+
+                        <button 
+                            type="submit"
+                            disabled={processing || !data.title.trim() || data.member_ids.length === 0}
+                            className="bg-blue-600 text-white py-1.5 rounded text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 self-end px-4"
+                        >
+                            {processing ? 'Создание...' : 'Начать беседу'}
+                        </button>
+                    </form>
+                )}
+
                 {/* Список чатов */}
-                <div className="flex flex-col">
+                {/* <div className="flex flex-col"> */}
+                {/* Список чатов со скролл-зоной */}
+                <div className="flex-col flex-grow overflow-y-auto">
                     {chats.length === 0 ? (
                         <div className="py-12 text-center text-gray-400 text-sm">
                             У вас пока нет активных диалогов.

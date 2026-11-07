@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; // Добавили useState
 import MainLayout from '../../Layouts/MainLayout';
-import { useForm, Link, router } from '@inertiajs/react';
+import { Head, useForm, Link, router } from '@inertiajs/react';
 
 interface AttachmentProps {
     id: number;
@@ -342,6 +342,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
 
     return (
         <MainLayout>
+            <Head title={chat.title} />
             {/* <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[550px]"> */}
             {/* 100dvh — это вся высота экрана, вычитаем 140px на шапку сайта и отступы */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[calc(100dvh-140px)] min-h-[400px]">
