@@ -222,12 +222,20 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) =
                         localChats.map(chat => {
                             // Проверяем, нужно ли подсветить чат как непрочитанный (VK стиль)
                             const isUnread = chat.last_message && !chat.last_message.is_read && !chat.last_message.is_me;
+                            // const isUnread = true;
+                            console.log('isUnread', isUnread, typeof(isUnread));
 
                             return (
                                 <div 
                                     key={chat.id}
                                     onClick={() => router.visit(`/messages/${chat.id}`)}
-                                    className={`flex items-center gap-4 px-5 py-3 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 transition-colors ${isUnread ? 'bg-blue-50/40 hover:bg-blue-50/70' : ''}`}
+                                    className={`flex items-center gap-4 px-5 py-3 border-b border-gray-50 last:border-0 cursor-pointer transition-colors ${
+                                        isUnread 
+                                            ? 'bg-blue-100/60 hover:bg-blue-100' 
+                                            : 'bg-white hover:bg-gray-50'
+                                    }`}
+
+
                                 >
                                     {/* Круглая аватарка чата */}
                                     <div className={`w-12 h-12 rounded-full overflow-hidden border border-gray-100 flex items-center justify-center text-sm shrink-0 shadow-inner ${chat.type === 'group' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
