@@ -58,14 +58,17 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) =
             setLocalChats(prevChats => {
                 // 1. Находим, есть ли уже этот чат в нашем списке на экране
                 const chatIndex = prevChats.findIndex(c => c.id === e.messageData.chat_id);
+                // Четко распределяем флаги автора сообщения, чтобы сокет правильно покрасил карточку
+                const isItMe = Number(e.messageData.sender.id) === Number(current_user_id);
 
                 // Формируем обновленный объект последнего сообщения в VK-стиле
                 const updatedLastMessage = {
                     id: e.messageData.id,
                     body: e.messageData.body,
-                    is_read: false, // Раз оно прилетело по сокету — оно гарантированно непрочитано для нас
+                    // is_read: false, // Раз оно прилетело по сокету — оно гарантированно непрочитано для нас
+                    is_read: isItMe ? true : false, // Если сообщение прилетело от друга — для нас оно НЕ прочитано
                     sender_name: e.messageData.sender.full_name.split(' ')[0], // Берем только имя
-                    is_me: false,
+                    is_me: isItMe,
                     date: 'Только что'
                 };
 

@@ -27,39 +27,81 @@ class MessageController extends Controller
 
         // Получаем все чаты, в которых состоит текущий пользователь,
         // сортируя их по времени последнего сообщения (как в VK)
+        // $chats = $user->chats()
+        //     ->with([
+        //         'members.profile', // Цепочка: Участники чата -> Их профили (аватарки)
+        //         'lastMessage.sender' // Цепочка: Последнее сообщение -> Кто его отправил
+        //     ])
+        //     ->get()
+        //     ->map(function ($chat) use ($user) {
+        //         // Если это диалог 1-на-1, нам нужно найти НАШЕГО СОБЕСЕДНИКА (другого участника)
+        //         $interlocutor = null;
+        //         if ($chat->type === 'dialog') {
+        //             $interlocutor = $chat->members->first(fn($member) => $member->id !== $user->id);
+        //         }
+
+        //         return [
+        //             'id' => $chat->id,
+        //             'type' => $chat->type,
+        //             // Если групповой чат — берем его название, если диалог — имя собеседника
+        //             'title' => $chat->type === 'group' 
+        //                 ? $chat->title 
+        //                 : ($interlocutor ? $interlocutor->first_name . ' ' . $interlocutor->last_name : 'Удаленный аккаунт'),
+        //             'last_message' => $chat->lastMessage ? [
+        //                 'id' => $chat->lastMessage->id,
+        //                 'body' => $chat->lastMessage->body,
+        //                 'is_read' => $chat->lastMessage->is_read,
+        //                 'sender_name' => $chat->lastMessage->sender->first_name,                        
+        //                 'is_me' => $chat->lastMessage->sender_id === $user->id,
+        //                 'date' => $chat->lastMessage->created_at->diffForHumans(), // Красивая дата "3 минуты назад"
+        //             ] : null,
+        //             'interlocutor_avatar' => $interlocutor?->profile?->avatar_url 
+        //                 ? asset('storage/' . $interlocutor->profile->avatar_url) 
+        //                 : null,
+        //         ];
+        //     });
+
+        // Загружаем чаты с их последним сообщением и участниками
         $chats = $user->chats()
-            ->with([
-                'members.profile', // Цепочка: Участники чата -> Их профили (аватарки)
-                'lastMessage.sender' // Цепочка: Последнее сообщение -> Кто его отправил
-            ])
+            ->with(['lastMessage.user', 'members.profile'])
             ->get()
+            // Сортируем на уровне коллекции: ставим наверх чаты, где lastMessage самый свежий.
+            // Если в чате еще нет сообщений (null), берем дату создания самого чата
+            ->sortByDesc(function ($chat) {
+                return $chat->lastMessage 
+                    ? $chat->lastMessage->id // Сортируем по ID сообщения (самый надежный маркер свежести)
+                    : 0; // Пустые чаты без сообщений опускаем ниже
+            })
+            ->values()
             ->map(function ($chat) use ($user) {
-                // Если это диалог 1-на-1, нам нужно найти НАШЕГО СОБЕСЕДНИКА (другого участника)
-                $interlocutor = null;
-                if ($chat->type === 'dialog') {
-                    $interlocutor = $chat->members->first(fn($member) => $member->id !== $user->id);
-                }
+                // Теперь обращение к последнему сообщению максимально простое и быстрое:
+                $lastMessage = $chat->lastMessage;
+                
+                $interlocutor = $chat->type === 'dialog' 
+                    ? $chat->members->where('id', '<>', $user->id)->first() 
+                    : null;
 
                 return [
                     'id' => $chat->id,
                     'type' => $chat->type,
-                    // Если групповой чат — берем его название, если диалог — имя собеседника
-                    'title' => $chat->type === 'group' 
-                        ? $chat->title 
-                        : ($interlocutor ? $interlocutor->first_name . ' ' . $interlocutor->last_name : 'Удаленный аккаунт'),
-                    'last_message' => $chat->lastMessage ? [
-                        'id' => $chat->lastMessage->id,
-                        'body' => $chat->lastMessage->body,
-                        'is_read' => $chat->lastMessage->is_read,
-                        'sender_name' => $chat->lastMessage->sender->first_name,                        
-                        'is_me' => $chat->lastMessage->sender_id === $user->id,
-                        'date' => $chat->lastMessage->created_at->diffForHumans(), // Красивая дата "3 минуты назад"
-                    ] : null,
-                    'interlocutor_avatar' => $interlocutor?->profile?->avatar_url 
+                    'title' => $chat->type === 'dialog' && $interlocutor 
+                        ? $interlocutor->first_name . ' ' . $interlocutor->last_name 
+                        : $chat->title,
+                    'interlocutor_avatar' => $interlocutor && $interlocutor->profile?->avatar_url 
                         ? asset('storage/' . $interlocutor->profile->avatar_url) 
                         : null,
+                    'last_message' => $lastMessage ? [
+                        'id' => $lastMessage->id,
+                        'body' => $lastMessage->body,
+                        'is_read' => (bool)$lastMessage->is_read,
+                        'sender_name' => $lastMessage->user->first_name,
+                        'is_me' => $lastMessage->sender_id === $user->id,
+                        'date' => $lastMessage->created_at->diffForHumans(),
+                    ] : null,
                 ];
             });
+
+
         
         // Получаем список подтвержденных друзей текущего пользователя для формы создания группы
         $friends = $user->friend_ids ? User::whereIn('id', $user->friend_ids)->get()->map(function ($friend) {
