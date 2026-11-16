@@ -13,3 +13,9 @@
 body {
     font-family: var(--font-sans);
 }
+
+@layer components {
+    .menu-item {
+        @apply block px-2 py-1.5 text-[#2a5885] no-underline text-sm rounded transition-colors duration-150 hover:bg-[#e5ebf1];
+    }
+}

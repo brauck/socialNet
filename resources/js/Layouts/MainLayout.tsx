@@ -7,88 +7,46 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     return (
-        <div style={{ 
-            fontFamily: 'sans-serif', 
-            backgroundColor: '#edf0f5', 
-            minHeight: '100vh',
-            color: '#000000'
-        }}>
+        <div className="font-sans bg-[#edf0f5] min-h-screen text-black">
             {/* 1. Верхняя шапка сайта (Header) */}
-            <header style={{
-                backgroundColor: '#ffffff',
-                height: '48px',
-                borderBottom: '1px solid #dce1e6',
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 100,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-            }}>
-                <div style={{ width: '960px', display: 'flex', alignItems: 'center', padding: '0 15px' }}>
-                    <span style={{ color: '#4c75a3', fontWeight: 'bold', fontSize: '20px', letterSpacing: '0.5px' }}>
+            <header className="bg-white h-12 border-b border-[#dce1e6] fixed top-0 left-0 right-0 z-[100] flex items-center justify-center">
+                <div className="w-[960px] flex items-center px-[15px]">
+                    <span className="text-[#4c75a3] font-bold text-xl tracking-[0.5px]">
                         socialNet
                     </span>
                 </div>
             </header>
 
             {/* 2. Основной контейнер контента */}
-            <div style={{
-                width: '960px',
-                margin: '0 auto',
-                paddingTop: '68px', // Отступ вниз из-за фиксированной шапки
-                display: 'flex',
-                gap: '20px'
-            }}>
+            <div className="w-[960px] mx-auto pt-[68px] flex gap-5">
                 {/* Левое меню навигации (Sidebar в стиле VK) */}
-                <aside style={{ width: '160px', flexShrink: 0 }}>
-                    <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {/* preserveState сохраняет состояние компонентов при переходе */}
-                        <Link href="/" style={menuItemStyle}>💁‍♂️ Моя страница</Link>
-                        <Link href="/news" style={menuItemStyle}>📰 Новости</Link>
-                        <Link href="/messages" style={menuItemStyle}>💬 Сообщения</Link>
-                        <Link href="/friends" style={menuItemStyle}>👥 Друзья</Link>
-                        <Link href="/communities" style={menuItemStyle}>👨‍👩‍👧‍👦 Сообщества</Link>
+                <aside className="w-40 shrink-0">
+                    <nav className="flex flex-col gap-1">
+                        <Link href="/" className="menu-item">💁‍♂️ Моя страница</Link>
+                        <Link href="/news" className="menu-item">📰 Новости</Link>
+                        <Link href="/messages" className="menu-item">💬 Сообщения</Link>
+                        <Link href="/friends" className="menu-item">👥 Друзья</Link>
+                        <Link href="/communities" className="menu-item">👨‍👩‍👧‍👦 Сообщества</Link>
 
-                        {/* Добавляем кнопку выхода. В Inertia для не-GET запросов мы явно указываем метод POST */}
-                        <Link href="/logout" method="post" as="button" style={{ 
-                            ...menuItemStyle, 
-                            border: 'none', 
-                            background: 'none', 
-                            width: '100%', 
-                            textAlign: 'left', 
-                            cursor: 'pointer',
-                            color: '#939393',
-                            marginTop: '15px',
-                            borderTop: '1px solid #dce1e6',
-                            borderRadius: 0,
-                            paddingTop: '10px'
-                        }}>
+                        {/* Кнопка выхода через POST-запрос Inertia */}
+                        <Link 
+                            href="/logout" 
+                            method="post" 
+                            as="button" 
+                            className="menu-item w-full text-left cursor-pointer text-[#939393] mt-[15px] border-t border-[#dce1e6] rounded-none pt-2.5"
+                        >
                             🚪 Выйти
                         </Link>
                     </nav>
                 </aside>
 
                 {/* Центральный блок, куда Inertia будет подставлять сами страницы */}
-                <main style={{ flexGrow: 1, maxWidth: '780px' }}>
+                <main className="grow max-w-[780px]">
                     {children}
                 </main>
             </div>
         </div>
     );
-};
-
-// Стили для пунктов меню (вынесем в константу для чистоты кода)
-const menuItemStyle: React.CSSProperties = {
-    display: 'block',
-    padding: '6px 8px',
-    color: '#2a5885',
-    textDecoration: 'none',
-    fontSize: '14px',
-    borderRadius: '4px',
-    transition: 'background-color 0.15s ease'
 };
 
 export default MainLayout;
