@@ -1,0 +1,7 @@
+./vendor/bin/sail up -d
+./vendor/bin/sail logs --tail=10 -f
+./vendor/bin/sail artisan reverb:start --debug
+./vendor/bin/sail npm run dev
+./vendor/bin/sail artisan queue:work
+./vendor/bin/sail artisan queue:listen
+./vendor/bin/sail down

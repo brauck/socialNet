@@ -43,8 +43,8 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/communities', [CommunityController::class, 'index']);
-    Route::get('/friends', [FriendController::class, 'index']);
+    Route::get('/communities', [CommunityController::class, 'index']);    
+
     // messages
     Route::get('/messages', [MessageController::class, 'index']);    
     Route::get('/messages/{chat}', [MessageController::class, 'show'])
@@ -56,9 +56,11 @@ Route::middleware('auth')->group(function () {
         ->name('messages.update');
     Route::get('/chats/media/{media}', [MessageController::class, 'downloadChatMedia'])
         ->name('chats.media.download');
+
     // Создание или открытие существующего диалога 1-на-1
     Route::post('/chats/dialog', [MessageController::class, 'storeDialog'])
         ->name('chats.dialog.store');
+
     // Создание группового чата (название группы + массив участников)
     Route::post('/chats/group', [MessageController::class, 'storeGroup'])
         ->name('chats.group.store');
@@ -70,9 +72,18 @@ Route::middleware('auth')->group(function () {
     Route::post('/news', [NewsController::class, 'store']);
     Route::delete('/news/{media}', [NewsController::class, 'destroy'])->name('news.destroy');
     Route::put('/news/{media}', [NewsController::class, 'update'])->name('news.update');
+
     // profile
     Route::get('/profile/edit', [ProfileController::class, 'edit']);
     Route::post('/profile/edit', [ProfileController::class, 'update']);    
+
+    // Управление заявками в друзья
+    Route::get('/friends', [FriendController::class, 'index']);
+    Route::post('/friends/request/{user}', [FriendController::class, 'sendRequest'])->name('friends.request');
+    Route::post('/friends/accept/{user}', [FriendController::class, 'acceptRequest'])->name('friends.accept');
+    Route::delete('/friends/{user}', [FriendController::class, 'removeFriend'])->name('friends.remove');
+    Route::post('/friends/decline/{user}', [FriendController::class, 'declineRequest'])->name('friends.decline');
+
 });
 
 // Route::get('/favicon.ico', function () {
