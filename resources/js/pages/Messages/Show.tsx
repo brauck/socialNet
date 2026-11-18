@@ -352,8 +352,8 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
             <Head title={chat.title} />
             {/* <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[550px]"> */}
             {/* 100dvh — это вся высота экрана, вычитаем 140px на шапку сайта и отступы */}
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[calc(100dvh-140px)] min-h-[400px]">
-
+            {/* <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[calc(100dvh-140px)] min-h-[400px]"> */}
+            <div className="page-card"> 
                 {/* 1. Шапка чата с кнопкой Назад */}
                 <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 bg-gray-50 shrink-0">
                     <Link href="/messages" className="text-blue-600 hover:underline text-sm font-medium">
@@ -364,7 +364,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                 </div>
 
                 {/* 2. Область сообщений (Читаем из localMessages вместо пропсов) */}
-                <div ref={scrollContainerRef} className="flex-grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
+                <div ref={scrollContainerRef} className="grow p-5 overflow-y-auto flex flex-col gap-3 bg-gray-50/30">
                     {/* НАХОДИМ ЦИКЛ ВЫВОДА СООБЩЕНИЙ ВНУТРИ ОБЛАСТИ ИСТОРИИ ПЕРЕПИСКИ */}
                     {localMessages.map((msg, index) => {
                         const stableKey = msg.id > 1000000000000 ? `opt-${index}` : `db-${msg.id}`;
@@ -441,7 +441,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                     </span>
                                 </div> */}
 
-                                <div className={`p-2.5 rounded-xl text-sm shadow-sm max-w-full min-w-[70px] flex flex-col justify-between ${
+                                <div className={`p-2.5 rounded-xl text-sm shadow-sm max-w-full min-w-17.5 flex flex-col justify-between ${
                                     msg.is_me 
                                         ? 'bg-blue-600 text-white rounded-tr-none' 
                                         : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'
@@ -456,7 +456,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                     {/* Контейнер для контента сообщения и времени в одну строку/блок */}
                                     <div className="flex flex-col w-full relative">
                                         {/* Текст сообщения без жестких правых отступов, переносится корректно */}
-                                        <p className="leading-relaxed break-words pb-3">{msg.body}</p>
+                                        <p className="leading-relaxed wrap-break-word pb-3">{msg.body}</p>
                                         
                                         {/* Вывод вложений (оставляем без изменений внутри структуры) */}
                                         {msg.attachments && msg.attachments.length > 0 && (
@@ -555,7 +555,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                             placeholder={data.chat_file ? `Файл прикреплен: ${data.chat_file.name}` : "Напишите сообщение..."} 
                             value={data.body}
                             onChange={e => setData('body', e.target.value)}
-                            className="flex-grow bg-gray-100 border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
+                            className="grow bg-gray-100 border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:border-blue-400 focus:bg-white transition-all"
                             disabled={processing}
                         />
                         <button 
@@ -569,7 +569,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
 
                     {/* Мгновенный вывод ошибки превышения 20 МБ без зависаний */}
                     {fileError && (
-                        <div className="text-xs text-red-600 font-medium bg-red-50 border border-red-100 rounded-md px-3 py-1 py-1.5 animate-fade-in">
+                        <div className="text-xs text-red-600 font-medium bg-red-50 border border-red-100 rounded-md px-3 py-1 animate-fade-in">
                             ⚠️ {fileError}
                         </div>
                     )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { router } from '@inertiajs/react'; // Добавили импорт для фоновых AJAX-запросов
 
+import { getTabClass } from '../../constants/ui';
 import MainLayout from '../../Layouts/MainLayout';
 
 interface FriendProps {
@@ -68,29 +69,41 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
     return (
         <MainLayout>
             {/* Основной контейнер с использованием встроенных стилей Tailwind */}
-            <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
-                
+            <div className="page-card">                
                 {/* Вкладки в стиле VK */}
                 <div className="flex gap-5 border-b border-gray-100 mb-3">
-                    <button 
+                    {/* <button 
                         onClick={() => setActiveTab('my')}
-                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'my' ? 'border-blue-600 text-black' : 'border-transparent text-gray-500 hover:text-black'}`}
+                        data-active={activeTab === 'my'} 
+                        className="tab-item"
                     >
                         Мои друзья ({friends.length})
                     </button>
                     <button 
                         onClick={() => setActiveTab('requests')}
-                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'requests' ? 'border-blue-600 text-black' : 'border-transparent text-gray-500 hover:text-black'}`}
+                        data-active={activeTab === 'requests'} 
+                        className="tab-item"
                     >
                         Заявки в друзья ({incomingRequests.length})
                     </button>
                     <button 
                         onClick={() => setActiveTab('search')}
-                        className={`pb-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'search' ? 'border-blue-600 text-black' : 'border-transparent text-gray-500 hover:text-black'}`}
+                        data-active={activeTab === 'search'} 
+                        className="tab-item"
                     >
                         🔍 Поиск друзей
-                    </button>                    
+                    </button> */}
+                    <button onClick={() => setActiveTab('my')} className={getTabClass(activeTab === 'my')}>
+                        Мои друзья ({friends.length})
+                    </button>
+                    <button onClick={() => setActiveTab('requests')} className={getTabClass(activeTab === 'requests')}>
+                        Заявки в друзья ({incomingRequests.length})
+                    </button>
+                    <button onClick={() => setActiveTab('search')} className={getTabClass(activeTab === 'search')}>
+                        🔍 Поиск друзей
+                    </button>
                 </div>
+
 
                 {/* Строка поиска (показывается только на вкладке поиска) */}
                 {activeTab === 'search' && (
@@ -107,7 +120,8 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                 )}
 
                 {/* Список людей */}
-                <div className="flex flex-col">
+                {/* <div className="flex flex-col"> */}
+                <div className="grow p-4 overflow-y-auto flex flex-col">
                     {currentList.length === 0 ? (
                         <div className="py-10 text-center text-gray-400 text-sm">
                             {activeTab === 'my' ? 'У вас пока нет друзей.' : 'Входящих заявок нет.'}
@@ -120,7 +134,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                     👨‍💻
                                 </div>
                                 
-                                <div className="flex-grow">
+                                <div className="grow">
                                     <div className="text-sm font-semibold text-blue-800 cursor-pointer hover:underline">
                                         {person.full_name}
                                     </div>
@@ -166,13 +180,13 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                         <>
                                             <button 
                                                 onClick={() => handleWriteMessage(person.id)}
-                                                className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
+                                                className="btn-primary"
                                             >
                                                 Написать
                                             </button>
                                             <button 
                                                 onClick={() => handleRemoveFriend(person.id)}
-                                                className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded-md text-xs font-medium hover:bg-gray-200 transition-colors"
+                                                className="btn-secondary"
                                             >
                                                 Убрать из друзей
                                             </button>
@@ -183,13 +197,13 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                         <>
                                             <button 
                                                 onClick={() => handleAcceptRequest(person.id)}
-                                                className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
+                                                className="btn-primary"
                                             >
                                                 Принять
                                             </button>
                                             <button 
                                                 onClick={() => handleDeclineRequest(person.id)}
-                                                className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded-md text-xs font-medium hover:bg-gray-200 transition-colors"
+                                                className="btn-secondary"
                                             >
                                                 Скрыть
                                             </button>
@@ -201,7 +215,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                             {person.relation_status === 'none' && (
                                                 <button 
                                                     onClick={() => handleSendRequest(person.id)}
-                                                    className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
+                                                    className="btn-primary"
                                                 >
                                                     Добавить в друзья
                                                 </button>
@@ -209,7 +223,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                             {person.relation_status === 'outgoing' && (
                                                 <button 
                                                     onClick={() => handleRemoveFriend(person.id)}
-                                                    className="bg-gray-100 text-gray-600 px-4 py-1.5 rounded-md text-xs font-medium hover:bg-gray-200 transition-colors"
+                                                    className="btn-secondary"
                                                     title="Нажмите, чтобы отменить заявку"
                                                 >
                                                     Заявка отправлена
@@ -218,7 +232,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                             {person.relation_status === 'incoming' && (
                                                 <button 
                                                     onClick={() => handleAcceptRequest(person.id)}
-                                                    className="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors"
+                                                    className="btn-secondary"
                                                 >
                                                     Принять заявку
                                                 </button>
@@ -226,7 +240,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                                             {person.relation_status === 'accepted' && (
                                                 <button 
                                                     onClick={() => handleWriteMessage(person.id)}
-                                                    className="bg-gray-100 text-blue-700 px-4 py-1.5 rounded-md text-xs font-medium hover:bg-gray-200 transition-colors"
+                                                    className="btn-secondary"
                                                 >
                                                     Написать сообщение
                                                 </button>

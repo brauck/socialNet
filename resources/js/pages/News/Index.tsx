@@ -242,7 +242,7 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
             <Head title="Новости" /> 
             {/* <div className="flex flex-col gap-4"> */}
             {/* Общий фиксированный контейнер для формы и ленты */}
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col h-[calc(100dvh-140px)] min-h-[400px] overflow-hidden">
+            <div className="page-card"> 
                 {/* БЛОК ФОРМЫ: «Что у вас нового?» в стиле VK */}
                 <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
                     {editingPost && (
@@ -341,7 +341,7 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                     </form>
                 </div>
 
-                <div className="flex-grow p-4 overflow-y-auto flex flex-col gap-4 bg-gray-50/30">
+                <div className="grow p-4 overflow-y-auto flex flex-col gap-4 bg-gray-50/30">
                     {/* ВЫВОД ЛЕНТЫ ПОСТОВ */}
                     {localPosts.map(post => (
                         <div key={post.id} className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm flex flex-col gap-4">
@@ -403,7 +403,7 @@ const Index: React.FC<IndexProps> = ({ posts, current_user_id }) => {
                                     <img 
                                         src={`/storage/${post.filename}`} 
                                         alt="Медиаконтент" 
-                                        className="max-w-full max-h-[500px] object-contain rounded-md" 
+                                        className="max-w-full max-h-125 object-contain rounded-md" 
                                     />
                                 </div>
                             )}

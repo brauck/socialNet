@@ -134,9 +134,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) =
     return (
         <MainLayout>
             <Head title="Сообщения" />
-            {/* <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"> */}
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col h-[calc(100dvh-140px)] min-h-[400px]">
-                
+            <div className="page-card">                
                 {/* Шапка мессенджера */}
                 {/* <div className="px-5 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <h2 className="text-sm font-semibold text-gray-800">Все диалоги</h2>
@@ -213,7 +211,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) =
                 {/* Список чатов */}
                 {/* <div className="flex flex-col"> */}
                 {/* Список чатов со скролл-зоной */}
-                <div className="flex-col flex-grow overflow-y-auto">
+                <div className="flex-col grow overflow-y-auto">
                     {chats.length === 0 ? (
                         <div className="py-12 text-center text-gray-400 text-sm">
                             У вас пока нет активных диалогов.
@@ -247,7 +245,7 @@ const Index: React.FC<IndexProps> = ({ chats, friends = [], current_user_id }) =
                                     </div>
 
                                     {/* Тело диалога */}
-                                    <div className="flex-grow min-w-0">
+                                    <div className="grow min-w-0">
                                         <div className="flex justify-between items-baseline">
                                             <span className="text-sm font-medium text-gray-900 truncate hover:text-blue-800">
                                                 {chat.title}
