@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { router } from '@inertiajs/react'; // Добавили импорт для фоновых AJAX-запросов
+import { router, Link } from '@inertiajs/react'; // Добавили импорт для фоновых AJAX-запросов
 
 import { getTabClass } from '../../constants/ui';
 import MainLayout from '../../Layouts/MainLayout';
@@ -130,13 +130,22 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
                         currentList.map(person => (
                             <div key={person.id} className="flex items-center gap-4 py-4 border-b border-gray-50 last:border-0">
                                 {/* Аватарка-заглушка */}
-                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-xl shrink-0">
-                                    👨‍💻
+                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-xl shrink-0">                                    
+                                    <Link 
+                                            href={`/users/${person.id}`}
+                                        >
+                                            👨‍💻
+                                        </Link>
                                 </div>
                                 
                                 <div className="grow">
                                     <div className="text-sm font-semibold text-blue-800 cursor-pointer hover:underline">
-                                        {person.full_name}
+                                        <Link 
+                                            href={`/users/${person.id}`} 
+                                            className="text-sm font-semibold text-blue-800 hover:underline inline-block"
+                                        >
+                                            {person.full_name}
+                                        </Link>
                                     </div>
                                     {person.status && (
                                         <div className="text-xs text-gray-500 mt-0.5 truncate max-w-md">

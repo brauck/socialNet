@@ -22,25 +22,11 @@ Route::middleware('guest')->group(function () {
 // 2. Защищенные маршруты социальной сети (доступны только авторизованным юзерам)
 Route::middleware('auth')->group(function () {
     
-    // Главная страница ("Моя страница" в стиле VK)
-    Route::get('/', function () {
-        // Вытаскиваем данные ТЕКУЩЕГО залогиненного пользователя
-        $currentUser = User::with('profile')->find(Auth::id());
-
-        return Inertia::render('Welcome', [
-            'appName' => 'socialNet',
-            'user' => [
-                'id' => $currentUser->id,
-                'full_name' => $currentUser->first_name . ' ' . $currentUser->last_name,
-                'email' => $currentUser->email,
-                'hometown' => $currentUser->profile?->hometown ?? 'Не указан',
-                'status' => $currentUser->profile?->status_text ?? '',
-                'birthday' => $currentUser->profile?->birthday ?? 'Не указана',
-                'avatar_url' => $currentUser->profile?->avatar_url ? asset('storage/' . $currentUser->profile->avatar_url) : null,
-            ],
-            'serverTime' => now()->toTimeString(),
-        ]);
-    });
+    // Главная страница ("Моя страница")
+    Route::get('/', [ProfileController::class, 'index'])->name('home');
+    
+    // Просмотр профиля любого пользователя
+    Route::get('/users/{user}', [ProfileController::class, 'show'])->name('users.show');
 
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/communities', [CommunityController::class, 'index']);    
