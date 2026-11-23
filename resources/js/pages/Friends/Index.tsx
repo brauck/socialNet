@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { router, Link } from '@inertiajs/react'; // Добавили импорт для фоновых AJAX-запросов
+import { Link, router, useRemember } from '@inertiajs/react'; // Добавили импорт для фоновых AJAX-запросов
 
 import { getTabClass } from '../../constants/ui';
 import MainLayout from '../../Layouts/MainLayout';
@@ -20,7 +20,9 @@ interface IndexProps {
 }
 
 const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [], filters }) => {
-    const [activeTab, setActiveTab] = useState<'my' | 'requests' | 'search'>('my');
+    // const [activeTab, setActiveTab] = useState<'my' | 'requests' | 'search'>('my');
+    const [activeTab, setActiveTab] = useRemember<'my' | 'requests' | 'search'>('my', 'Friends/ActiveTab');
+
     const [searchQuery, setSearchQuery] = useState<string>(filters?.search || '');
 
     const currentList = activeTab === 'my' 
@@ -32,6 +34,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
     // Живой поиск с задержкой 300 мс (debounce), чтобы не нагружать БД на каждую букву
     useEffect(() => {
         if (activeTab !== 'search') return;
+        if (searchQuery === (filters?.search || '')) return;
 
         const timer = setTimeout(() => {
             router.get('/friends', { search: searchQuery }, {
@@ -43,6 +46,7 @@ const Index: React.FC<IndexProps> = ({ friends, incomingRequests, foundUsers = [
 
         return () => clearTimeout(timer);
     }, [searchQuery, activeTab]);
+
 
     const handleWriteMessage = (friendId: number) => {
         router.post('/chats/dialog', {
