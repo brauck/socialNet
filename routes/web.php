@@ -29,7 +29,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/users/{user}', [ProfileController::class, 'show'])->name('users.show');
 
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/communities', [CommunityController::class, 'index']);    
+    //Route::get('/communities', [CommunityController::class, 'index']);    
 
     // messages
     Route::get('/messages', [MessageController::class, 'index']);    
@@ -72,6 +72,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/friends/accept/{user}', [FriendController::class, 'acceptRequest'])->name('friends.accept');
     Route::delete('/friends/{user}', [FriendController::class, 'removeFriend'])->name('friends.remove');
     Route::post('/friends/decline/{user}', [FriendController::class, 'declineRequest'])->name('friends.decline');
+
+    // Сообщества
+    Route::get('/communities', [App\Http\Controllers\CommunityController::class, 'index'])
+        ->name('communities.index');
+    Route::post('/communities', [App\Http\Controllers\CommunityController::class, 'store'])
+        ->name('communities.store');
+    Route::get('/communities/{community:slug}', [App\Http\Controllers\CommunityController::class, 'show'])
+        ->name('communities.show');
+    Route::post('/communities/{community}/join', [App\Http\Controllers\CommunityController::class, 'join'])
+        ->name('communities.join');
+    Route::delete('/communities/{community}/leave', [App\Http\Controllers\CommunityController::class, 'leave'])
+        ->name('communities.leave');
+
 
 });
 
