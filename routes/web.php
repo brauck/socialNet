@@ -42,6 +42,9 @@ Route::middleware('auth')->group(function () {
         ->name('messages.update');
     Route::get('/chats/media/{media}', [MessageController::class, 'downloadChatMedia'])
         ->name('chats.media.download');
+    Route::post('/messages/{chat}/read', [App\Http\Controllers\MessageController::class, 'markAsRead'])
+        ->name('messages.read');
+
 
     // Создание или открытие существующего диалога 1-на-1
     Route::post('/chats/dialog', [MessageController::class, 'storeDialog'])

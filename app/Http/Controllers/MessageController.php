@@ -14,6 +14,7 @@ use App\Events\MessageSent;
 use App\Events\MessageDeleted;
 use App\Events\MessageUpdated;
 use App\Events\ChatListUpdated;
+use App\Events\MessagesRead;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -174,8 +175,9 @@ class MessageController extends Controller
         // Для отслеживания непрочитанных сообщений
         // Инициализируем переменную для сообщений
         $messages = [];
+        $updatedCount = 0;
 
-        DB::transaction(function () use ($chat, $user, &$messages) {
+        DB::transaction(function () use ($chat, $user, &$messages, &$updatedCount) {
             // 1. СНАЧАЛА получаем историю сообщений (с оригинальными статусами is_read из базы)
             $messagesCollection = $chat->messages()
                 ->with(['user.profile', 'media.type'])
@@ -183,7 +185,8 @@ class MessageController extends Controller
                 ->get();
 
             // 2. И только ПОСЛЕ этого помечаем их в PostgreSQL как прочитанные
-            Message::where('chat_id', $chat->id)
+            // Сохраняем количество реально прочитанных сейчас сообщений
+            $updatedCount = Message::where('chat_id', $chat->id)
                 ->where('sender_id', '<>', $user->id)
                 ->where('is_read', false)
                 ->update(['is_read' => true]);
@@ -212,9 +215,13 @@ class MessageController extends Controller
                             'liked_by_me' => $item->likes()->where('user_id', Auth::id())->exists(),
                         ];
                     })->toArray(),
-
                 ];
             });
+
+            // Если были новые непрочитанные сообщения — уведомляем отправителя по сокету
+            if ($updatedCount > 0) {
+                broadcast(new MessagesRead($chat->id, $user->id))->toOthers();
+            }
         });
 
 
@@ -570,4 +577,24 @@ class MessageController extends Controller
         // Бесшовный SPA-переход прямо внутрь свежесозданной группы!
         return redirect()->route('messages.show', ['chat' => $newChatId]);
     }
+
+        /**
+     * Пометить сообщения прочитанными в реальном времени (когда оба юзера в чате)
+     */
+    public function markAsRead(Chat $chat)
+    {
+        $user = Auth::user();
+
+        $updatedCount = Message::where('chat_id', $chat->id)
+            ->where('sender_id', '<>', $user->id)
+            ->where('is_read', false)
+            ->update(['is_read' => true]);
+
+        if ($updatedCount > 0) {
+            broadcast(new MessagesRead($chat->id, $user->id))->toOthers();
+        }
+
+        return response()->noContent();
+    }
+
 }

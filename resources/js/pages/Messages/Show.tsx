@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'; // Добавили 
 import MainLayout from '../../Layouts/MainLayout';
 import { Head, useForm, Link, router } from '@inertiajs/react';
 
+
 interface AttachmentProps {
     id: number;
     filename: string;
@@ -133,7 +134,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
         // Подключаемся строго к приватному каналу этого конкретного чата
         const channel = window.Echo.private(`chat.${chat.id}`);
 
-            channel.listen('.message.sent', (e: { messageData: any }) => {
+        channel.listen('.message.sent', (e: { messageData: any }) => {
             console.log('По закрытому каналу прилетело новое сообщение:', e.messageData);
             
             setLocalMessages(prevMessages => {
@@ -145,6 +146,20 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                 const senderId = Number(e.messageData.sender.id);
                 const myId = Number(current_user_id);
                 const isItMe = senderId === myId;
+
+                // Если прилетело чужое сообщение — сразу отправляем отметку о прочтении
+                // (делаем это здесь, чтобы сетевой запрос не дублировался внутри setLocalMessages)
+                if (!isItMe) {
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+                    fetch(`/messages/${chat.id}/read`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                        },
+                    });
+                }
 
                 // Мапим структуру бэкенда под интерфейс твоего экрана
                 const incomingMessage: MessageProps = {
@@ -178,6 +193,17 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
             });
         });
 
+        channel.listen('.messages.read', (e: { chatId: number; readerId: number }) => {
+            // Если сообщения прочитал собеседник (не мы) — помечаем все наши сообщения прочитанными
+            if (Number(e.readerId) !== Number(current_user_id)) {
+                setLocalMessages(prevMessages =>
+                    prevMessages.map(msg =>
+                        msg.is_me ? { ...msg, is_read: true } : msg
+                    )
+                );
+            }
+        });
+
 
         // ДОБАВЛЯЕМ НОВОГО СЛУШАТЕЛЯ: Ловим удаление сообщений по сокетам
         channel.listen('.message.deleted', (e: { messageId: number }) => {
@@ -201,6 +227,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
             window.Echo.private(`chat.${chat.id}`).stopListening('.message.sent');
             window.Echo.private(`chat.${chat.id}`).stopListening('.message.deleted');
             window.Echo.private(`chat.${chat.id}`).stopListening('.message.updated');
+            window.Echo.private(`chat.${chat.id}`).stopListening('.messages.read');
             
             // И только после этого окончательно покидаем сам канал
             window.Echo.leaveChannel(`chat.${chat.id}`);
@@ -286,6 +313,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
             sender_avatar: null, // Аватар подгрузится после F5, либо оставь пустой
             is_me: true, // Флаг, чтобы облачко сразу улетело вправо и стало синим!
             date: 'Только что',
+            is_read: false,
             // Если прикреплен файл — имитируем его отображение на экране из локальной памяти браузера!
             attachments: data.chat_file ? [{
                 id: Date.now() + 1,
@@ -441,7 +469,7 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                     </span>
                                 </div> */}
 
-                                <div className={`p-2.5 rounded-xl text-sm shadow-sm max-w-full min-w-17.5 flex flex-col justify-between ${
+                                <div className={`p-2.5 rounded-xl text-sm shadow-sm max-w-full min-w-20.5 flex flex-col justify-between ${
                                     msg.is_me 
                                         ? 'bg-blue-600 text-white rounded-tr-none' 
                                         : 'bg-white text-gray-900 border border-gray-100 rounded-tl-none'
@@ -487,10 +515,21 @@ const Show: React.FC<ShowProps> = ({ chat, messages, current_user_id  }) => {
                                         
                                         {/* Метка времени: теперь позиционируется аккуратно снизу справа, 
                                             не накладываясь на текст, благодаря pb-3 у параграфа выше */}
-                                        <span className={`text-[9px] absolute -bottom-1.5 right-0 shrink-0 select-none ${
+                                        {/* <span className={`text-[9px] absolute -bottom-1.5 right-0 shrink-0 select-none ${
                                             msg.is_me ? 'text-blue-200' : 'text-gray-400'
                                         }`}>
                                             {msg.date}
+                                        </span> */}
+
+                                        <span className={`text-[9px] absolute -bottom-1.5 right-0 shrink-0 select-none flex items-center gap-0.5 ${
+                                            msg.is_me ? 'text-blue-200' : 'text-gray-400'
+                                        }`}>
+                                            <span>{msg.date}</span>
+                                            {msg.is_me && (
+                                                <span className="font-bold tracking-tighter ml-0.5" title={msg.is_read ? 'Прочитано' : 'Отправлено'}>
+                                                    {msg.is_read ? '✓✓' : '✓'}
+                                                </span>
+                                            )}
                                         </span>
                                     </div>
                                 </div>
